@@ -1,4 +1,4 @@
-import { db } from '@/lib/db';
+import { query } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 
 function stockStatus(v) {
@@ -12,11 +12,9 @@ function stockStatus(v) {
 export async function GET() {
   const { error } = await requireApi();
   if (error) return error;
-  const rows = db
-    .prepare(
-      `SELECT v.*, p.name AS product_name, p.category, p.base_unit
-       FROM variants v JOIN products p ON p.id = v.product_id ORDER BY p.category, p.name, v.color`
-    )
-    .all();
+  const rows = await query(
+    `SELECT v.*, p.name AS product_name, p.category, p.base_unit
+     FROM variants v JOIN products p ON p.id = v.product_id ORDER BY p.category, p.name, v.color`
+  );
   return Response.json(rows.map((v) => ({ ...v, status: stockStatus(v) })));
 }

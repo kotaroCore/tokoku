@@ -1,24 +1,20 @@
 import Link from 'next/link';
-import { db } from '@/lib/db';
+import { query, queryOne } from '@/lib/db';
 import { rp, num } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
-export default function Beranda() {
-  const today = db
-    .prepare(
-      `SELECT COUNT(*) AS nota, COALESCE(SUM(total),0) AS omset, COALESCE(SUM(hutang),0) AS hutang
-       FROM sales WHERE date(created_at) = date('now','localtime')`
-    )
-    .get();
-  const totalHutang = db.prepare('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers').get().v;
-  const low = db
-    .prepare(
-      `SELECT v.*, p.name AS product_name, p.base_unit FROM variants v JOIN products p ON p.id = v.product_id
-       WHERE (v.level_green > 0 OR v.level_yellow > 0 OR v.level_red > 0) AND v.stock <= v.level_green
-       ORDER BY (v.stock <= v.level_red) DESC, (v.stock <= v.level_yellow) DESC, p.name LIMIT 15`
-    )
-    .all();
+export default async function Beranda() {
+  const today = await queryOne(
+    `SELECT COUNT(*) AS nota, COALESCE(SUM(total),0) AS omset, COALESCE(SUM(hutang),0) AS hutang
+     FROM sales WHERE DATE(created_at) = CURDATE()`
+  );
+  const { v: totalHutang } = await queryOne('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers');
+  const low = await query(
+    `SELECT v.*, p.name AS product_name, p.base_unit FROM variants v JOIN products p ON p.id = v.product_id
+     WHERE (v.level_green > 0 OR v.level_yellow > 0 OR v.level_red > 0) AND v.stock <= v.level_green
+     ORDER BY (v.stock <= v.level_red) DESC, (v.stock <= v.level_yellow) DESC, p.name LIMIT 15`
+  );
 
   return (
     <>

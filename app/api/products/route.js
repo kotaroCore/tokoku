@@ -1,12 +1,12 @@
-import { db } from '@/lib/db';
+import { query, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 
 export async function GET() {
   const { error } = await requireApi();
   if (error) return error;
-  const products = db.prepare('SELECT * FROM products ORDER BY category, name').all();
-  const units = db.prepare('SELECT * FROM units ORDER BY factor').all();
-  const variants = db.prepare('SELECT * FROM variants ORDER BY color').all();
+  const products = await query('SELECT * FROM products ORDER BY category, name');
+  const units = await query('SELECT * FROM units ORDER BY factor');
+  const variants = await query('SELECT * FROM variants ORDER BY color');
   return Response.json(
     products.map((p) => ({
       ...p,
@@ -26,22 +26,22 @@ export async function POST(req) {
   const units = (b.units || []).filter((u) => u.name?.trim() && Number(u.price) >= 0);
   if (!units.length) return Response.json({ error: 'Minimal satu satuan jual' }, { status: 400 });
   const variants = b.variants?.length ? b.variants : [{ color: '' }];
-  const tx = db.transaction(() => {
-    const p = db
-      .prepare('INSERT INTO products (category, name, base_unit) VALUES (?, ?, ?)')
-      .run(b.category.trim().toUpperCase(), b.name.trim(), b.base_unit?.trim() || 'biji');
-    const pid = p.lastInsertRowid;
+  const id = await tx(async (q) => {
+    const p = await q('INSERT INTO products (category, name, base_unit) VALUES (?, ?, ?)', [
+      b.category.trim().toUpperCase(), b.name.trim(), b.base_unit?.trim() || 'biji',
+    ]);
     for (const u of units) {
-      db.prepare('INSERT INTO units (product_id, name, factor, price) VALUES (?, ?, ?, ?)').run(
-        pid, u.name.trim(), Number(u.factor) || 1, Number(u.price)
-      );
+      await q('INSERT INTO units (product_id, name, factor, price) VALUES (?, ?, ?, ?)', [
+        p.insertId, u.name.trim(), Number(u.factor) || 1, Number(u.price),
+      ]);
     }
     for (const v of variants) {
-      db.prepare(
-        'INSERT INTO variants (product_id, color, stock, level_green, level_yellow, level_red) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(pid, (v.color || '').trim(), Number(v.stock) || 0, Number(v.level_green) || 0, Number(v.level_yellow) || 0, Number(v.level_red) || 0);
+      await q(
+        'INSERT INTO variants (product_id, color, stock, level_green, level_yellow, level_red) VALUES (?, ?, ?, ?, ?, ?)',
+        [p.insertId, (v.color || '').trim(), Number(v.stock) || 0, Number(v.level_green) || 0, Number(v.level_yellow) || 0, Number(v.level_red) || 0]
+      );
     }
-    return pid;
+    return p.insertId;
   });
-  return Response.json({ ok: true, id: Number(tx()) });
+  return Response.json({ ok: true, id });
 }
