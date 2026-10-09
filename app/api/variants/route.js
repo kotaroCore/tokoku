@@ -29,6 +29,8 @@ export async function POST(req) {
   const { error } = await requireApi();
   if (error) return error;
   const b = await req.json();
+  const dup = await queryOne('SELECT id FROM variants WHERE product_id = ? AND color = ?', [b.product_id, (b.color || '').trim()]);
+  if (dup) return Response.json({ error: `Warna "${(b.color || '').trim()}" sudah ada di produk ini` }, { status: 400 });
   const r = await query(
     'INSERT INTO variants (product_id, color, stock, level_green, level_yellow, level_red) VALUES (?, ?, ?, ?, ?, ?)',
     [b.product_id, (b.color || '').trim(), Number(b.stock) || 0, Number(b.level_green) || 0, Number(b.level_yellow) || 0, Number(b.level_red) || 0]
