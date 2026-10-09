@@ -48,6 +48,14 @@ export async function GET(req) {
      FROM sale_returns WHERE DATE(created_at) = ?`,
     [date]
   );
+  const pembelian = await queryOne(
+    `SELECT COUNT(*) AS jumlah, COALESCE(SUM(total),0) AS total,
+            COALESCE(SUM(CASE WHEN pay_method = 'cash' THEN total END),0) AS cash,
+            COALESCE(SUM(CASE WHEN pay_method = 'ewallet' THEN total END),0) AS ewallet,
+            COALESCE(SUM(CASE WHEN pay_method = 'transfer' THEN total END),0) AS transfer
+     FROM purchases WHERE DATE(created_at) = ?`,
+    [date]
+  );
   const { v: totalHutang } = await queryOne('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers');
-  return Response.json({ date, ...totals, hutangDibayar, retur, perChannel, perUser, terlaris, shifts, totalHutang });
+  return Response.json({ date, ...totals, hutangDibayar, retur, pembelian, perChannel, perUser, terlaris, shifts, totalHutang });
 }
