@@ -12,6 +12,8 @@ const ITEMS = [
   { href: '/stok', icon: '📊', label: 'Stok' },
   { href: '/hutang', icon: '📒', label: 'Hutang' },
   { href: '/laporan', icon: '📈', label: 'Laporan' },
+  { href: '/supplier', icon: '🚚', label: 'Supplier' },
+  { href: '/panel', icon: '⚙️', label: 'Panel', owner: true },
 ];
 
 const SIDE_MODES = ['open', 'icon', 'closed'];
@@ -30,7 +32,7 @@ const save = (key, value) => {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 };
 
-export default function AppShell({ name, children }) {
+export default function AppShell({ name, role, children }) {
   const path = usePathname();
   const [side, setSide] = useState('open');
   const [order, setOrder] = useState(ITEMS.map((i) => i.href));
@@ -52,7 +54,8 @@ export default function AppShell({ name, children }) {
   const changeSide = (m) => { setSide(m); save('tk.side', m); };
   const changeOrder = (o) => { setOrder(o); save('tk.order', o); };
 
-  const items = order.map((h) => ITEMS.find((i) => i.href === h));
+  const allowed = ITEMS.filter((i) => !i.owner || role === 'owner');
+  const items = order.map((h) => allowed.find((i) => i.href === h)).filter(Boolean);
   const active = (h) => (h === '/' ? path === '/' : path.startsWith(h));
 
   return (

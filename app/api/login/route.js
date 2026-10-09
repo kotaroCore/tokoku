@@ -8,6 +8,9 @@ export async function POST(req) {
   if (!user || !bcrypt.compareSync(String(password || ''), user.password_hash)) {
     return Response.json({ error: 'Username atau password salah' }, { status: 401 });
   }
+  if (!user.active) {
+    return Response.json({ error: 'Akun dinonaktifkan. Hubungi owner.' }, { status: 403 });
+  }
   const shift = await query('INSERT INTO shifts (user_id) VALUES (?)', [user.id]);
   await createSession({ uid: user.id, name: user.name, shiftId: shift.insertId });
   return Response.json({ ok: true });

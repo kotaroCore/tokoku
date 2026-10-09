@@ -6,7 +6,7 @@ import { query, tx, queryOne, closeDb } from '../lib/db.js'; // membuat database
 const password = process.env.SEED_PASSWORD || 'tokoku123';
 const hash = bcrypt.hashSync(password, 10);
 for (const [username, name] of [['owner', 'Owner'], ['kasir', 'Kasir'], ['gudang', 'Gudang']]) {
-  await query('INSERT IGNORE INTO users (username, name, password_hash) VALUES (?, ?, ?)', [username, name, hash]);
+  await query('INSERT IGNORE INTO users (username, name, password_hash, role) VALUES (?, ?, ?, ?)', [username, name, hash, username === 'owner' ? 'owner' : 'staff']);
 }
 
 const { n } = await queryOne('SELECT COUNT(*) AS n FROM products');

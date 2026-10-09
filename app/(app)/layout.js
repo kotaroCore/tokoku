@@ -3,5 +3,5 @@ import AppShell from './AppShell';
 
 export default async function AppLayout({ children }) {
   const s = await requirePage();
-  return <AppShell name={s.name}>{children}</AppShell>;
+  return <AppShell name={s.name} role={s.role}>{children}</AppShell>;
 }
