@@ -110,13 +110,36 @@ export async function POST(req) {
 export async function GET(req) {
   const { error } = await requireApi();
   if (error) return error;
-  const id = new URL(req.url).searchParams.get('id');
+  const params = new URL(req.url).searchParams;
+  const id = params.get('id');
+
+  // Tanpa id: daftar nota per tanggal (untuk halaman Riwayat).
+  if (!id) {
+    const date = params.get('date') || new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const rows = await query(
+      `SELECT s.id, s.created_at, s.total, s.hutang, s.channel, u.name AS kasir, c.name AS customer_name,
+         (SELECT COALESCE(SUM(r.total),0) FROM sale_returns r WHERE r.sale_id = s.id) AS retur
+       FROM sales s JOIN users u ON u.id = s.user_id LEFT JOIN customers c ON c.id = s.customer_id
+       WHERE DATE(s.created_at) = ? ORDER BY s.id DESC`,
+      [date]
+    );
+    return Response.json(rows);
+  }
+
   const sale = await queryOne(
     `SELECT s.*, u.name AS kasir, c.name AS customer_name, c.total_hutang AS customer_hutang, c.last_hutang_date
      FROM sales s JOIN users u ON u.id = s.user_id LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id = ?`,
     [id]
   );
   if (!sale) return Response.json({ error: 'Nota tidak ditemukan' }, { status: 404 });
-  const items = await query('SELECT * FROM sale_items WHERE sale_id = ?', [id]);
-  return Response.json({ ...sale, items });
+  const items = await query(
+    `SELECT i.*, COALESCE((SELECT SUM(qty) FROM sale_return_items WHERE sale_item_id = i.id),0) AS returned_qty
+     FROM sale_items i WHERE i.sale_id = ?`,
+    [id]
+  );
+  const returns = await query(
+    'SELECT r.*, u.name AS kasir FROM sale_returns r JOIN users u ON u.id = r.user_id WHERE r.sale_id = ? ORDER BY r.id',
+    [id]
+  );
+  return Response.json({ ...sale, items, returns });
 }

@@ -28,6 +28,8 @@ export default function Laporan() {
             <div className="card stat"><div className="v">{rp(d.transfer)}</div><div className="l">Transfer</div></div>
             <div className="card stat"><div className="v">{rp(d.hutang_baru)}</div><div className="l">Hutang baru</div></div>
             <div className="card stat"><div className="v">{rp(d.hutangDibayar)}</div><div className="l">Hutang dibayar</div></div>
+            <div className="card stat"><div className="v">{rp(d.retur.total)}</div><div className="l">Retur ({d.retur.jumlah}x)</div></div>
+            <div className="card stat"><div className="v">{rp(d.omset - d.retur.total)}</div><div className="l">Omset bersih</div></div>
           </div>
           <div className="grid cols2">
             <div className="card">
@@ -61,6 +63,12 @@ export default function Laporan() {
               </table>
             </div>
           </div>
+          {d.retur.jumlah > 0 && (
+            <p className="muted">
+              Retur hari ini: hutang dikurangi {rp(d.retur.hutang_dikurangi)}; uang keluar cash {rp(d.retur.cash)},
+              e-wallet {rp(d.retur.ewallet)}, transfer {rp(d.retur.transfer)}. Kartu Cash, E-wallet, dan Transfer di atas belum dikurangi uang retur.
+            </p>
+          )}
           <p className="muted">Total hutang beredar saat ini: {rp(d.totalHutang)}</p>
         </>
       )}

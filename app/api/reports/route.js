@@ -40,6 +40,14 @@ export async function GET(req) {
      FROM shifts sh JOIN users u ON u.id = sh.user_id WHERE DATE(sh.started_at) = ? ORDER BY sh.started_at`,
     [date]
   );
+  const retur = await queryOne(
+    `SELECT COUNT(*) AS jumlah, COALESCE(SUM(total),0) AS total, COALESCE(SUM(hutang_reduced),0) AS hutang_dikurangi,
+            COALESCE(SUM(CASE WHEN refund_method = 'cash' THEN refund_amount END),0) AS cash,
+            COALESCE(SUM(CASE WHEN refund_method = 'ewallet' THEN refund_amount END),0) AS ewallet,
+            COALESCE(SUM(CASE WHEN refund_method = 'transfer' THEN refund_amount END),0) AS transfer
+     FROM sale_returns WHERE DATE(created_at) = ?`,
+    [date]
+  );
   const { v: totalHutang } = await queryOne('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers');
-  return Response.json({ date, ...totals, hutangDibayar, perChannel, perUser, terlaris, shifts, totalHutang });
+  return Response.json({ date, ...totals, hutangDibayar, retur, perChannel, perUser, terlaris, shifts, totalHutang });
 }

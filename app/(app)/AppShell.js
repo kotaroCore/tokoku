@@ -7,6 +7,7 @@ import LogoutButton from './LogoutButton';
 const ITEMS = [
   { href: '/', icon: '🏠', label: 'Beranda' },
   { href: '/pos', icon: '🛒', label: 'Kasir' },
+  { href: '/riwayat', icon: '🧾', label: 'Riwayat' },
   { href: '/produk', icon: '📦', label: 'Produk' },
   { href: '/stok', icon: '📊', label: 'Stok' },
   { href: '/hutang', icon: '📒', label: 'Hutang' },
