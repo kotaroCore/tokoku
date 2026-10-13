@@ -51,6 +51,7 @@ export async function POST(req) {
         const qty = Number(l.qty);
         const cost = Number(l.unit_cost);
         if (!v || !u || !(qty > 0) || !(cost >= 0)) throw new BadRequest('Barang, jumlah, atau harga beli tidak valid');
+        if (!v.active) throw new BadRequest(`Warna ${p.name} ${v.color} sudah dinonaktifkan`);
         const subtotal = Math.round(qty * cost);
         total += subtotal;
         done.push({ v, p, u, qty, cost, subtotal });

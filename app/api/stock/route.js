@@ -14,7 +14,7 @@ export async function GET() {
   if (error) return error;
   const rows = await query(
     `SELECT v.*, p.name AS product_name, p.category, p.base_unit
-     FROM variants v JOIN products p ON p.id = v.product_id WHERE p.active = 1 ORDER BY p.category, p.name, v.color`
+     FROM variants v JOIN products p ON p.id = v.product_id WHERE p.active = 1 AND v.active = 1 ORDER BY p.category, p.name, v.color`
   );
   return Response.json(rows.map((v) => ({ ...v, status: stockStatus(v) })));
 }

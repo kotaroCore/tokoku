@@ -12,7 +12,7 @@ export default async function Beranda() {
   const { v: totalHutang } = await queryOne('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers');
   const low = await query(
     `SELECT v.*, p.name AS product_name, p.base_unit FROM variants v JOIN products p ON p.id = v.product_id
-     WHERE (v.level_green > 0 OR v.level_yellow > 0 OR v.level_red > 0) AND v.stock <= v.level_green
+     WHERE v.active = 1 AND (v.level_green > 0 OR v.level_yellow > 0 OR v.level_red > 0) AND v.stock <= v.level_green
      ORDER BY (v.stock <= v.level_red) DESC, (v.stock <= v.level_yellow) DESC, p.name LIMIT 15`
   );
 

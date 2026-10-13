@@ -29,6 +29,7 @@ export async function POST(req) {
         const [u] = p ? await q('SELECT * FROM units WHERE id = ? AND product_id = ?', [it.unit_id, p.id]) : [];
         const qty = Number(it.qty);
         if (!v || !u || !(qty > 0)) throw new BadRequest('Item tidak valid');
+        if (!v.active) throw new BadRequest(`Warna ${p.name} ${v.color} sudah dinonaktifkan`);
         const sudahDiKeranjang = lines.filter((l) => l.v.id === v.id).reduce((s, l) => s + l.need, 0);
         const need = qty * u.factor;
         if (v.stock < sudahDiKeranjang + need - 1e-9) {

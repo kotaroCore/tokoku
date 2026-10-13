@@ -40,6 +40,7 @@ export default function POS() {
     const out = [];
     for (const p of products) {
       for (const v of p.variants) {
+        if (!v.active) continue;
         if (`${p.name} ${v.color} ${p.category}`.toLowerCase().includes(term)) out.push({ p, v });
         if (out.length >= 12) return out;
       }

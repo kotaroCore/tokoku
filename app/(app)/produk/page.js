@@ -33,7 +33,60 @@ function unitWarnings(f) {
   return w;
 }
 
-function ProductForm({ init, cats, onDone, onCancel }) {
+// Daftar warna produk saat mode ubah: ubah nama, nonaktifkan/aktifkan, dan tambah warna baru.
+function VariantTable({ productId, variants, onChanged }) {
+  const [err, setErr] = useState('');
+
+  async function call(method, body) {
+    setErr('');
+    const r = await fetch('/api/variants', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) setErr((await r.json()).error);
+    onChanged();
+  }
+
+  const rename = (v) => {
+    const color = prompt(`Ubah nama warna "${v.color}":`, v.color);
+    if (color == null) return;
+    call('PUT', { id: v.id, color });
+  };
+  const toggle = (v) => {
+    if (v.active && !confirm(`Nonaktifkan warna "${v.color || '-'}"? Warna tidak muncul di kasir dan stok, riwayat nota tetap aman.`)) return;
+    call('PATCH', { id: v.id, active: !v.active });
+  };
+  const add = () => {
+    const color = prompt('Tambah warna/varian:');
+    if (!color?.trim()) return;
+    call('POST', { product_id: productId, color });
+  };
+
+  return (
+    <>
+      <h2 style={{ marginTop: 16 }}>Warna / varian</h2>
+      <table>
+        <thead><tr><th>Warna</th><th className="r">Stok</th><th>Level (H/K/M)</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {variants.map((v) => (
+            <tr key={v.id} style={v.active ? undefined : { opacity: 0.5 }}>
+              <td>{v.color || '-'}{!v.active && ' · NONAKTIF'}</td>
+              <td className="r">{num(v.stock)}</td>
+              <td>{v.level_green}/{v.level_yellow}/{v.level_red}</td>
+              <td>{v.active ? 'Aktif' : 'Nonaktif'}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>
+                <button type="button" className="secondary" onClick={() => rename(v)}>Ubah</button>{' '}
+                <button type="button" className="secondary" onClick={() => toggle(v)}>{v.active ? 'Nonaktifkan' : 'Aktifkan'}</button>
+              </td>
+            </tr>
+          ))}
+          {!variants.length && <tr><td colSpan={5} className="muted">Belum ada warna.</td></tr>}
+        </tbody>
+      </table>
+      {err && <div className="alert err">{err}</div>}
+      <button type="button" className="secondary" style={{ marginTop: 8 }} onClick={add}>+ Warna</button>
+    </>
+  );
+}
+
+function ProductForm({ init, cats, variants, onChanged, onDone, onCancel }) {
   const [f, setF] = useState(init);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -121,7 +174,8 @@ function ProductForm({ init, cats, onDone, onCancel }) {
           <button type="button" className="secondary" onClick={() => setF({ ...f, variants: [...f.variants, blankVariant()] })}>+ Warna</button>
         </>
       )}
-      {edit && <p className="muted" style={{ marginTop: 12 }}>Warna, stok, dan level diatur di halaman Stok.</p>}
+      {edit && <VariantTable productId={f.id} variants={variants} onChanged={onChanged} />}
+      {edit && <p className="muted" style={{ marginTop: 12 }}>Stok dan level diatur di halaman Stok.</p>}
 
       {err && <div className="alert err">{err}</div>}
       <div className="row" style={{ marginTop: 12 }}>
@@ -182,7 +236,17 @@ export default function Produk() {
         <div><button onClick={() => setForm(form ? null : blank())}>{form ? 'Tutup' : '+ Produk baru'}</button></div>
       </div>
 
-      {form && <ProductForm key={form.id ?? 'new'} init={form} cats={cats} onCancel={() => setForm(null)} onDone={() => { setForm(null); load(); }} />}
+      {form && (
+        <ProductForm
+          key={form.id ?? 'new'}
+          init={form}
+          cats={cats}
+          variants={products.find((p) => p.id === form.id)?.variants ?? []}
+          onChanged={load}
+          onCancel={() => setForm(null)}
+          onDone={() => { setForm(null); load(); }}
+        />
+      )}
 
       <div className="card">
         <table>
@@ -193,7 +257,7 @@ export default function Produk() {
                 <td><span className="muted">{p.category}{!p.active && ' · NONAKTIF'}</span><br />{p.name}
                   {p.cost > 0 && <div className="muted">modal {rp(p.cost)}/{p.base_unit}</div>}</td>
                 <td>{p.units.map((u) => <div key={u.id}>{u.name}{u.factor !== 1 && ` (${num(u.factor)} ${p.base_unit})`}: {rp(u.price)}</div>)}</td>
-                <td>{p.variants.map((v) => <span key={v.id} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>{v.color || '-'} ({num(v.stock)})</span>)}</td>
+                <td>{p.variants.filter((v) => v.active).map((v) => <span key={v.id} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>{v.color || '-'} ({num(v.stock)})</span>)}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button className="secondary" onClick={() => openEdit(p)}>Ubah</button>{' '}
                   {p.active && <button className="secondary" onClick={() => addVariant(p)}>+ Warna</button>}{' '}

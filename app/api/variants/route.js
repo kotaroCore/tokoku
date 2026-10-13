@@ -21,7 +21,24 @@ export async function PATCH(req) {
         Number(b.level_green) || 0, Number(b.level_yellow) || 0, Number(b.level_red) || 0, v.id,
       ]);
     }
+    // Nonaktifkan / aktifkan warna. Tidak dihapus agar riwayat nota dan stok tetap utuh.
+    if (b.active != null) await q('UPDATE variants SET active = ? WHERE id = ?', [b.active ? 1 : 0, v.id]);
   });
+  return Response.json({ ok: true });
+}
+
+// Ganti nama warna. Nama tidak boleh kembar dengan warna lain di produk yang sama.
+export async function PUT(req) {
+  const { error } = await requireApi();
+  if (error) return error;
+  const b = await req.json();
+  const v = await queryOne('SELECT * FROM variants WHERE id = ?', [b.id]);
+  if (!v) return Response.json({ error: 'Varian tidak ditemukan' }, { status: 404 });
+  const color = String(b.color || '').trim();
+  if (!color) return Response.json({ error: 'Nama warna wajib diisi' }, { status: 400 });
+  const dup = await queryOne('SELECT id FROM variants WHERE product_id = ? AND color = ? AND id <> ?', [v.product_id, color, v.id]);
+  if (dup) return Response.json({ error: `Warna "${color}" sudah ada di produk ini` }, { status: 400 });
+  await query('UPDATE variants SET color = ? WHERE id = ?', [color, v.id]);
   return Response.json({ ok: true });
 }
 
