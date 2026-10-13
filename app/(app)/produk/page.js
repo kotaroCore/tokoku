@@ -81,7 +81,7 @@ function ProductForm({ init, cats, onDone, onCancel }) {
         const factor = Number(u.factor), price = Number(u.price);
         const per = factor > 0 && u.price !== '' ? price / factor : null;
         return (
-          <div className="row" key={i}>
+          <div className="unit-row" key={i}>
             <div className="field"><label>Nama satuan</label>
               <input required value={u.name} onChange={(e) => setUnit(i, 'name', e.target.value)} />
               <div style={{ marginTop: 4 }}>
@@ -97,7 +97,7 @@ function ProductForm({ init, cats, onDone, onCancel }) {
               {per != null && factor !== 1 && <div className="muted">= {rp(per)} per {f.base_unit}</div>}
               {per != null && Number(f.cost) > 0 && <div className="muted">laba {rp(per - Number(f.cost))} per {f.base_unit}</div>}
             </div>
-            {f.units.length > 1 && <div><button type="button" className="secondary" onClick={() => setF({ ...f, units: f.units.filter((_, j) => j !== i) })}>Hapus</button></div>}
+            {f.units.length > 1 && <div className="unit-del"><button type="button" className="secondary" onClick={() => setF({ ...f, units: f.units.filter((_, j) => j !== i) })}>Hapus</button></div>}
           </div>
         );
       })}

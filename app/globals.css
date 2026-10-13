@@ -58,6 +58,15 @@ label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 3
 .field { margin-bottom: 10px; }
 .row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
 .row > * { flex: 1; min-width: 90px; }
+/* Baris satuan jual: rata atas agar input sejajar walau sel lain punya tombol/hint tambahan */
+.unit-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 8px; align-items: start; }
+.unit-row > * { min-width: 0; }
+.unit-row .field { margin-bottom: 10px; }
+.unit-row .unit-del { padding-top: 20px; }
+@media (max-width: 767px) {
+  .unit-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .unit-row .unit-del { padding-top: 0; grid-column: 1 / -1; }
+}
 button { font: inherit; padding: 8px 14px; border: 0; border-radius: 6px; background: var(--brand); color: #fff; cursor: pointer; }
 button.secondary { background: var(--bg); color: var(--text); border: 1px solid var(--line); }
 button.danger { background: var(--red); }
