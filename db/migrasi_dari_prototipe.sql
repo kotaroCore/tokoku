@@ -75,11 +75,11 @@ SELECT u.id,
        1
 FROM tokoku_lama.units u;
 
--- Koreksi: 1 mass Benik Lubang 2 = 1 plastik = 144 biji (dikonfirmasi pemilik).
+-- Koreksi: 1 mass Benik Lubang 2 = 1.728 biji (= 12 gross x 144) (dikonfirmasi pemilik).
 -- Dump lama menyimpan 1440; nilai ini menggantikannya.
 UPDATE satuan_harga sh
 JOIN produk p ON p.id = sh.produk_id
-SET sh.isi = 144
+SET sh.isi = 1728
 WHERE p.nama = 'Benik Lubang 2' AND sh.nama_satuan = 'mass';
 
 INSERT INTO varian (id, produk_id, kode_warna, nama_warna, stok, stok_rusak, batas_kuning, batas_merah, aktif)
