@@ -87,8 +87,8 @@ CREATE TABLE varian (
   produk_id     INT NOT NULL,
   kode_warna    VARCHAR(30) NOT NULL,                  -- '-' untuk produk tanpa warna
   nama_warna    VARCHAR(50) NULL,
-  stok          DECIMAL(12,3) NOT NULL DEFAULT 0,      -- stok jual (toko+gudang digabung)
-  stok_rusak    DECIMAL(12,3) NOT NULL DEFAULT 0,
+  stok          DECIMAL(14,6) NOT NULL DEFAULT 0,      -- stok jual (toko+gudang digabung); 6 desimal agar hasil konversi (mis. 13.333333) tidak terpotong
+  stok_rusak    DECIMAL(14,6) NOT NULL DEFAULT 0,
   batas_kuning  DECIMAL(12,3) NULL,                    -- NULL = pakai bawaan produk
   batas_merah   DECIMAL(12,3) NULL,
   aktif         TINYINT(1) NOT NULL DEFAULT 1,
@@ -104,8 +104,8 @@ CREATE TABLE mutasi_stok (
   jenis          ENUM('awal','jual','isi_warna','retur_masuk','masuk','koreksi',
                       'ke_rusak','jual_rusak','hapus_rusak','retur_supplier') NOT NULL,
   kolom          ENUM('stok','stok_rusak') NOT NULL,
-  jumlah         DECIMAL(12,3) NOT NULL,               -- + bertambah, - berkurang
-  saldo_sesudah  DECIMAL(12,3) NOT NULL,
+  jumlah         DECIMAL(14,6) NOT NULL,               -- + bertambah, - berkurang
+  saldo_sesudah  DECIMAL(14,6) NOT NULL,
   ref_tipe       VARCHAR(20) NULL,                     -- nota, retur, barang_masuk
   ref_id         BIGINT NULL,
   alasan         VARCHAR(255) NULL,                    -- WAJIB untuk koreksi (dijaga aplikasi)

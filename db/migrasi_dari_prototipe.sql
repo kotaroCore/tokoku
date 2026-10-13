@@ -80,7 +80,7 @@ SELECT v.id,
        v.product_id,
        IF(v.color = '', '-', v.color),
        NULLIF(v.color, ''),
-       ROUND(v.stock, 3),
+       ROUND(v.stock, 6),
        0,
        NULLIF(v.level_yellow, 0),
        NULLIF(v.level_red, 0),
@@ -170,8 +170,10 @@ UNION ALL SELECT 'user',      (SELECT COUNT(*) FROM tokoku_lama.users),    (SELE
 UNION ALL SELECT 'shift',     (SELECT COUNT(*) FROM tokoku_lama.shifts),   (SELECT COUNT(*) FROM shift);
 
 -- b. Total stok harus sama
-SELECT (SELECT ROUND(SUM(stock), 3) FROM tokoku_lama.variants) AS stok_lama,
-       (SELECT SUM(stok) FROM varian)                         AS stok_baru;
+-- Selisih harus 0 (atau < 0.000001 per varian, karena pembulatan ke 6 desimal)
+SELECT (SELECT SUM(stock) FROM tokoku_lama.variants) AS stok_lama,
+       (SELECT SUM(stok) FROM varian)                AS stok_baru,
+       (SELECT SUM(stock) FROM tokoku_lama.variants) - (SELECT SUM(stok) FROM varian) AS selisih;
 
 -- c. Total omset harus sama
 SELECT (SELECT SUM(total) FROM tokoku_lama.sales) AS omset_lama,
