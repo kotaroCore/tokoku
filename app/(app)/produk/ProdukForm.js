@@ -18,7 +18,7 @@ export const blank = (presets) => ({ id: null, category: 'BENANG', name: '', bas
 // Data produk dari API dijadikan isi form ubah.
 export function toForm(p, presets) {
   return {
-    id: p.id, category: p.category, name: p.name, base_unit: p.base_unit, cost: p.cost ? String(p.cost) : '',
+    last_buy: p.last_buy, id: p.id, category: p.category, name: p.name, base_unit: p.base_unit, cost: p.cost ? String(p.cost) : '',
     units: p.units.map((u) => ({ id: u.id, ...splitName(u.name, presets), factor: String(u.factor), price: String(u.price) })),
     variants: [],
   };
@@ -142,6 +142,14 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
         <div className="field"><label>Harga beli / modal per {f.base_unit || 'satuan dasar'} (opsional)</label>
           <input inputMode="numeric" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value, units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })} /></div>
       </div>
+      {f.last_buy && (
+        <div style={{ marginBottom: 8 }}>
+          <button type="button" className="secondary" onClick={() => setF({ ...f, cost: String(Math.round((f.last_buy.unit_cost / f.last_buy.factor) * 100) / 100), units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })}>
+            Pakai harga nota terakhir
+          </button>{' '}
+          <span className="muted">{rp(f.last_buy.unit_cost)} per {f.last_buy.unit_name} ({String(f.last_buy.date).slice(0, 10)}) = {rp(f.last_buy.unit_cost / f.last_buy.factor)} per {f.base_unit}. Setelah dipakai, angka masih bisa diubah manual.</span>
+        </div>
+      )}
       <div className="muted" style={{ marginTop: -4 }}>Modal per satuan jual (dosin dll.) bisa diisi langsung di tiap baris satuan di bawah; modal per {f.base_unit || 'satuan dasar'} ikut terhitung.</div>
 
       <h2>Satuan jual &amp; harga</h2>

@@ -40,11 +40,18 @@ export async function GET(req) {
   if (error) return error;
   const all = new URL(req.url).searchParams.get('all') === '1';
   const products = await query(`SELECT * FROM products ${all ? '' : 'WHERE active = 1'} ORDER BY category, name`);
+  // Harga beli di nota pembelian terakhir tiap produk (hanya sebagai saran; modal produk tetap diatur manual).
+  const lastBuy = await query(
+    `SELECT i.product_id, i.unit_name, i.unit_cost, i.factor, DATE(pu.created_at) AS date
+     FROM purchase_items i JOIN purchases pu ON pu.id = i.purchase_id
+     WHERE i.id IN (SELECT MAX(id) FROM purchase_items WHERE product_id IS NOT NULL GROUP BY product_id)`
+  );
   const units = await query('SELECT * FROM units ORDER BY factor');
   const variants = await query('SELECT * FROM variants ORDER BY color');
   return Response.json(
     products.map((p) => ({
       ...p,
+      last_buy: lastBuy.find((x) => x.product_id === p.id) || null,
       units: units.filter((u) => u.product_id === p.id),
       variants: variants.filter((v) => v.product_id === p.id),
     }))
