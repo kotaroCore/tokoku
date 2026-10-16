@@ -31,6 +31,11 @@ export default function POS() {
   const [err, setErr] = useState('');
   const [nota, setNota] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  // Catatan stok yang diambil otomatis hari ini (disimpan di browser) untuk dicocokkan sore hari.
+  const logKey = () => 'tokoku-auto-' + new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const [autoLog, setAutoLog] = useState([]);
+  useEffect(() => { try { setAutoLog(JSON.parse(localStorage.getItem(logKey()) || '[]')); } catch {} }, []);
 
   const loadProducts = () => fetch('/api/products').then((r) => r.json()).then(setProducts);
   useEffect(() => { loadProducts(); }, []);
@@ -66,6 +71,7 @@ export default function POS() {
 
   function addToCart() {
     setErr('');
+    setNotice('');
     const n = Number(String(qty).replace(',', '.'));
     if (!sel || !unit || !(n > 0)) return setErr('Pilih produk, satuan, dan jumlah yang benar.');
     const used = (id) => cart.filter((c) => c.variant.id === id).reduce((x, c) => x + c.qty * c.unit.factor, 0);
@@ -106,11 +112,15 @@ export default function POS() {
         if (need <= 1e-9) break;
         const take = Math.min(need, Math.max(0, left(c)));
         if (take <= 0) continue;
-        lines.push({ v: c, qty: take / unit.factor });
+        lines.push({ v: c, qty: take / unit.factor, auto: true });
         need -= take;
       }
     }
-    setCart([...cart, ...lines.map((l) => ({ product: sel.product, variant: l.v, unit, qty: l.qty, disc: d }))]);
+    const autos = lines.filter((l) => l.auto);
+    if (autos.length) {
+      setNotice(`Stok diambil otomatis (${sel.product.name}): ` + autos.map((l) => `${l.v.color || 'tanpa warna'} ${num(l.qty * unit.factor)} ${sel.product.base_unit}`).join(', '));
+    }
+    setCart([...cart, ...lines.map((l) => ({ product: sel.product, variant: l.v, unit, qty: l.qty, disc: d, auto: !!l.auto }))]);
     setSel(null);
   }
 
@@ -159,6 +169,16 @@ export default function POS() {
     if (!r.ok) return setErr(d.error);
     const n = await fetch(`/api/sales?id=${d.saleId}`).then((x) => x.json());
     setNota({ ...n, sisaHutang: d.sisaHutang });
+    const autos = cart.filter((c) => c.auto).map((c) => ({
+      t: new Date().toTimeString().slice(0, 5), nota: d.saleId, produk: c.product.name,
+      warna: c.variant.color || 'tanpa warna', jml: c.qty * c.unit.factor, satuan: c.product.base_unit,
+    }));
+    if (autos.length) {
+      const next = [...autoLog, ...autos];
+      setAutoLog(next);
+      try { localStorage.setItem(logKey(), JSON.stringify(next)); } catch {}
+    }
+    setNotice('');
     setCart([]);
     setCash(''); setEwallet(''); setTransfer(''); setPayDebt('');
     setCustName(''); setCustPhone(''); setCustAddr(''); setKnown(null);
@@ -212,6 +232,7 @@ export default function POS() {
               </>
             )}
             {err && <div className="alert err">{err}</div>}
+            {notice && <div className="alert ok">{notice}</div>}
           </div>
 
           <div className="card">
@@ -222,7 +243,10 @@ export default function POS() {
                 <tbody>
                   {cart.map((c, i) => (
                     <tr key={i}>
-                      <td>{c.product.name}{c.disc > 0 && <span className="muted"> diskon {c.disc}%</span>}</td>
+                      <td>
+                        {c.product.name}{c.disc > 0 && <span className="muted"> diskon {c.disc}%</span>}
+                        <br /><small className="muted">{c.variant.color || 'tanpa warna'}{c.auto ? ` · otomatis ${num(c.qty * c.unit.factor)} ${c.product.base_unit}` : ''}</small>
+                      </td>
                       <td className="r">{num(c.qty)} {c.unit.name}</td>
                       <td className="r">{rp(c.unit.price)}</td>
                       <td className="r">{rp(lineTotal(c))}</td>
@@ -297,6 +321,20 @@ export default function POS() {
           </button>
         </div>
       </div>
+      {autoLog.length > 0 && (
+        <div className="card">
+          <h2>Stok diambil otomatis hari ini</h2>
+          <p className="muted">Untuk dicocokkan dengan stok fisik di sore hari.</p>
+          <table>
+            <thead><tr><th>Jam</th><th>Nota</th><th>Produk</th><th>Warna</th><th className="r">Diambil</th></tr></thead>
+            <tbody>
+              {autoLog.map((a, i) => (
+                <tr key={i}><td>{a.t}</td><td>#{a.nota}</td><td>{a.produk}</td><td>{a.warna}</td><td className="r">{num(a.jml)} {a.satuan}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }
