@@ -63,11 +63,18 @@ export default function Laporan() {
               </table>
             </div>
             <div className="card">
-              <h2>Per kasir &amp; channel</h2>
+              <h2>Per kasir</h2>
               <table>
                 <tbody>
                   {d.perUser.map((u) => <tr key={u.name}><td>{u.name}</td><td className="r">{u.nota} nota</td><td className="r">{rp(u.omset)}</td></tr>)}
+                  {d.perUser.length === 0 && <tr><td className="muted">Belum ada penjualan.</td></tr>}
+                </tbody>
+              </table>
+              <h2 style={{ marginTop: 14 }}>Per channel</h2>
+              <table>
+                <tbody>
                   {d.perChannel.map((c) => <tr key={c.channel}><td>{c.channel}</td><td className="r">{c.nota} nota</td><td className="r">{rp(c.omset)}</td></tr>)}
+                  {d.perChannel.length === 0 && <tr><td className="muted">Belum ada penjualan.</td></tr>}
                 </tbody>
               </table>
               <h2 style={{ marginTop: 14 }}>Shift</h2>
