@@ -78,6 +78,21 @@ export async function GET(req) {
      WHERE DATE(s.created_at) = ? AND p.cost = 0`,
     [date]
   );
+  // Aset barang = stok × harga beli terakhir dari pembelian (per satuan dasar); jika belum pernah dibeli, pakai modal produk.
+  const aset = await query(
+    `SELECT p.id, p.cost,
+            (SELECT COALESCE(SUM(v.stock),0) FROM variants v WHERE v.product_id = p.id) AS stok,
+            (SELECT pi.unit_cost / pi.factor FROM purchase_items pi
+              WHERE pi.product_id = p.id ORDER BY pi.id DESC LIMIT 1) AS harga_kulaan
+     FROM products p WHERE p.active = 1`
+  );
+  const asetBarang = { total: 0, adaHarga: 0, tanpaHarga: 0 };
+  for (const a of aset) {
+    const harga = Number(a.harga_kulaan) || Number(a.cost) || 0;
+    if (harga > 0) { asetBarang.adaHarga++; asetBarang.total += Math.max(Number(a.stok), 0) * harga; }
+    else asetBarang.tanpaHarga++;
+  }
+  asetBarang.total = Math.round(asetBarang.total);
   const { v: totalHutang } = await queryOne('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers');
-  return Response.json({ date, ...totals, hutangDibayar, retur, pembelian, laba: laba.laba, labaCash: Math.round(labaCash),tanpaModal, perChannel, perUser, terlaris, shifts, totalHutang });
+  return Response.json({ date, ...totals, hutangDibayar, retur, pembelian, laba: laba.laba, labaCash: Math.round(labaCash),tanpaModal, asetBarang, perChannel, perUser, terlaris, shifts, totalHutang });
 }

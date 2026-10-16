@@ -34,7 +34,18 @@ export default function Laporan() {
             <div className="card stat"><div className="v">{rp(d.laba)}</div><div className="l">Profit (laba kotor)</div></div>
             <div className="card stat"><div className="v">{rp(d.labaCash)}</div><div className="l">Laba dari penjualan cash</div></div>
             <div className="card stat"><div className="v">{rp(d.cash - d.retur.cash - d.pembelian.cash)}</div><div className="l">Cash bersih (setelah retur &amp; pembelian)</div></div>
+            <div className="card stat">
+              <div className="v">{rp(d.asetBarang.total)}</div>
+              <div className="l">
+                Total aset barang{' '}
+                <span className="badge green" title="Produk yang sudah punya harga kulaan">{d.asetBarang.adaHarga}</span>{' '}
+                <span className="badge red" title="Produk belum punya harga kulaan">{d.asetBarang.tanpaHarga}</span>
+              </div>
+            </div>
           </div>
+          {d.asetBarang.tanpaHarga > 0 && (
+            <p className="muted">{d.asetBarang.tanpaHarga} produk (angka merah) belum punya harga kulaan, jadi belum masuk total aset barang.</p>
+          )}
           {d.tanpaModal > 0 && (
             <p className="muted">{d.tanpaModal} item terjual belum punya harga beli, jadi belum masuk hitungan profit.</p>
           )}
