@@ -32,6 +32,7 @@ export default function Laporan() {
             <div className="card stat"><div className="v">{rp(d.omset - d.retur.total)}</div><div className="l">Omset bersih</div></div>
             <div className="card stat"><div className="v">{rp(d.pembelian.total)}</div><div className="l">Pembelian ({d.pembelian.jumlah}x)</div></div>
             <div className="card stat"><div className="v">{rp(d.laba)}</div><div className="l">Profit (laba kotor)</div></div>
+            <div className="card stat"><div className="v">{rp(d.labaCash)}</div><div className="l">Laba dari penjualan cash</div></div>
             <div className="card stat"><div className="v">{rp(d.cash - d.retur.cash - d.pembelian.cash)}</div><div className="l">Cash bersih (setelah retur &amp; pembelian)</div></div>
           </div>
           {d.tanpaModal > 0 && (
