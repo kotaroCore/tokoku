@@ -199,12 +199,13 @@ export default function POS() {
             <h2>Keranjang</h2>
             {cart.length === 0 ? <p className="muted">Belum ada item.</p> : (
               <table>
-                <thead><tr><th>Item</th><th className="r">Qty</th><th className="r">Subtotal</th><th></th></tr></thead>
+                <thead><tr><th>Item</th><th className="r">Qty</th><th className="r">Harga satuan</th><th className="r">Subtotal</th><th></th></tr></thead>
                 <tbody>
                   {cart.map((c, i) => (
                     <tr key={i}>
                       <td>{c.product.name}{c.disc > 0 && <span className="muted"> diskon {c.disc}%</span>}</td>
                       <td className="r">{num(c.qty)} {c.unit.name}</td>
+                      <td className="r">{rp(c.unit.price)}</td>
                       <td className="r">{rp(lineTotal(c))}</td>
                       <td><button className="secondary" onClick={() => setCart(cart.filter((_, j) => j !== i))}>×</button></td>
                     </tr>
@@ -282,23 +283,30 @@ export default function POS() {
 }
 
 function Nota({ nota, onClose }) {
+  const line = { display: 'flex', justifyContent: 'space-between', gap: 8 };
+  const bayar = nota.paid_cash + nota.paid_ewallet + nota.paid_transfer;
   return (
     <>
       <div className="card nota">
-        <h2>Toko — Nota #{nota.id}</h2>
-        <div className="muted">{nota.created_at} • kasir {nota.kasir}{nota.customer_name && ` • ${nota.customer_name}`}</div>
-        <hr />
+        <h2>Toko</h2>
+        <div className="muted">{nota.created_at}</div>
+        <div className="muted">No. {nota.id} • kasir {nota.kasir}{nota.customer_name && ` • ${nota.customer_name}`}</div>
+        <hr style={{ borderStyle: 'dashed' }} />
         {nota.items.map((i) => (
-          <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-            <span>{i.product_name} {num(i.qty)} {i.unit_name}{i.discount_pct > 0 && ` (-${i.discount_pct}%)`}</span>
-            <span>{rp(i.subtotal)}</span>
+          <div key={i.id} style={{ marginBottom: 6 }}>
+            <div>{i.product_name} ({i.unit_name})</div>
+            <div style={line}>
+              <span>{num(i.qty)} X {num(i.unit_price)}{i.discount_pct > 0 && ` (-${i.discount_pct}%)`}</span>
+              <span>{rp(i.subtotal)}</span>
+            </div>
           </div>
         ))}
-        <hr />
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>Total</strong><strong>{rp(nota.total)}</strong></div>
-        {nota.paid_cash > 0 && <div>Cash: {rp(nota.paid_cash)}</div>}
-        {nota.paid_ewallet > 0 && <div>E-wallet: {rp(nota.paid_ewallet)}</div>}
-        {nota.paid_transfer > 0 && <div>Transfer: {rp(nota.paid_transfer)}</div>}
+        <hr style={{ borderStyle: 'dashed' }} />
+        <div style={line}><strong>Total</strong><strong>{rp(nota.total)}</strong></div>
+        {nota.paid_cash > 0 && <div style={line}><span>Bayar (Cash)</span><span>{rp(nota.paid_cash)}</span></div>}
+        {nota.paid_ewallet > 0 && <div style={line}><span>Bayar (E-wallet)</span><span>{rp(nota.paid_ewallet)}</span></div>}
+        {nota.paid_transfer > 0 && <div style={line}><span>Bayar (Transfer)</span><span>{rp(nota.paid_transfer)}</span></div>}
+        {bayar > nota.total && <div style={line}><span>Kembali</span><span>{rp(bayar - nota.total)}</span></div>}
         {nota.sisaHutang > 0 && (
           <p><strong>⚠️ MASIH ADA HUTANG: {rp(nota.sisaHutang)}</strong>{nota.last_hutang_date && ` (sejak ${nota.last_hutang_date})`}</p>
         )}
