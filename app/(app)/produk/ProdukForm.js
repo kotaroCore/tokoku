@@ -3,15 +3,21 @@ import { useMemo, useState } from 'react';
 import { rp, num } from '@/lib/format';
 
 export const CATS = ['BENANG', 'FURING', 'RESLETING', 'BENIK', 'KAIN'];
-// Satuan jual umum: klik untuk mengisi nama + faktor. Paket berbeda-beda per produk, jadi faktornya diisi sendiri.
-const PRESETS = [
+// Pilihan satuan jual (listbox). Judul paket (mis. "3 warna") diisi terpisah dan digabung ke nama satuan saat simpan.
+const UNIT_OPTIONS = [
   { name: 'biji', factor: '1' },
   { name: 'paket', factor: '' },
   { name: 'dosin', factor: '12' },
   { name: 'gross', factor: '144' },
   { name: 'meter', factor: '1' },
 ];
-const blankUnit = () => ({ name: 'biji', factor: '1', price: '' });
+const blankUnit = () => ({ unit: 'biji', title: '', factor: '1', price: '' });
+const fullName = (u) => [u.unit, u.title.trim()].filter(Boolean).join(' ');
+// Pisahkan nama tersimpan ("paket 3 warna") menjadi satuan + judul; nama lama di luar daftar tetap jadi satuan sendiri.
+function splitName(name) {
+  const hit = UNIT_OPTIONS.find((o) => name === o.name || name.startsWith(o.name + ' '));
+  return hit ? { unit: hit.name, title: name.slice(hit.name.length).trim() } : { unit: name, title: '' };
+}
 const blankVariant = () => ({ color: '', stock: '', level_green: '', level_yellow: '', level_red: '' });
 export const blank = () => ({ id: null, category: 'BENANG', name: '', base_unit: 'biji', cost: '', units: [blankUnit()], variants: [blankVariant()] });
 
@@ -19,7 +25,7 @@ export const blank = () => ({ id: null, category: 'BENANG', name: '', base_unit:
 export function toForm(p) {
   return {
     id: p.id, category: p.category, name: p.name, base_unit: p.base_unit, cost: p.cost ? String(p.cost) : '',
-    units: p.units.map((u) => ({ id: u.id, name: u.name, factor: String(u.factor), price: String(u.price) })),
+    units: p.units.map((u) => ({ id: u.id, ...splitName(u.name), factor: String(u.factor), price: String(u.price) })),
     variants: [],
   };
 }
@@ -27,7 +33,7 @@ export function toForm(p) {
 // Peringatan harga: satuan lebih besar seharusnya tidak lebih mahal per satuan dasar, dan harga jual tidak di bawah modal.
 function unitWarnings(f) {
   const rows = f.units
-    .map((u) => ({ name: u.name, factor: Number(u.factor), price: Number(u.price), raw: u.price }))
+    .map((u) => ({ name: fullName(u), factor: Number(u.factor), price: Number(u.price), raw: u.price }))
     .filter((u) => u.name && u.factor > 0 && u.raw !== '');
   const w = [];
   const sorted = [...rows].sort((a, b) => a.factor - b.factor);
@@ -109,7 +115,7 @@ export function ProductForm({ init, cats, variants, onChanged, onDone, onCancel 
     e.preventDefault();
     setErr('');
     setBusy(true);
-    const body = { id: f.id, category: f.category, name: f.name, base_unit: f.base_unit, cost: f.cost, units: f.units };
+    const body = { id: f.id, category: f.category, name: f.name, base_unit: f.base_unit, cost: f.cost, units: f.units.map((u) => ({ id: u.id, name: fullName(u), factor: u.factor, price: u.price })) };
     if (!edit) body.variants = f.variants.filter((v) => v.color.trim() || f.variants.length === 1);
     const r = await fetch('/api/products', {
       method: edit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -144,14 +150,17 @@ export function ProductForm({ init, cats, variants, onChanged, onDone, onCancel 
         const per = factor > 0 && u.price !== '' ? price / factor : null;
         return (
           <div className="unit-row" key={i}>
-            <div className="field"><label>Nama satuan</label>
-              <input required value={u.name} onChange={(e) => setUnit(i, 'name', e.target.value)} />
-              <div style={{ marginTop: 4 }}>
-                {PRESETS.map((p) => (
-                  <button type="button" key={p.name} className="secondary" style={{ padding: '2px 8px', marginRight: 4, fontSize: 12 }}
-                    onClick={() => setF({ ...f, units: f.units.map((x, j) => (j === i ? { ...x, name: p.name, factor: p.factor || x.factor } : x)) })}>{p.name}</button>
-                ))}
-              </div>
+            <div className="field"><label>Satuan</label>
+              <select value={u.unit} onChange={(e) => {
+                const o = UNIT_OPTIONS.find((x) => x.name === e.target.value);
+                setF({ ...f, units: f.units.map((x, j) => (j === i ? { ...x, unit: e.target.value, factor: o?.factor || x.factor } : x)) });
+              }}>
+                {!UNIT_OPTIONS.some((o) => o.name === u.unit) && <option value={u.unit}>{u.unit}</option>}
+                {UNIT_OPTIONS.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Judul paket (opsional)</label>
+              <input value={u.title} placeholder="mis. 3 warna" onChange={(e) => setUnit(i, 'title', e.target.value)} />
             </div>
             <div className="field"><label>Faktor</label><input required inputMode="decimal" value={u.factor} onChange={(e) => setUnit(i, 'factor', e.target.value)} /></div>
             <div className="field"><label>Harga jual</label>
@@ -163,7 +172,7 @@ export function ProductForm({ init, cats, variants, onChanged, onDone, onCancel 
           </div>
         );
       })}
-      <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { name: '', factor: '', price: '' }] })}>+ Satuan</button>
+      <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), factor: '' }] })}>+ Satuan</button>
       {warns.map((w, i) => <div key={i} className="alert err" style={{ marginTop: 8 }}>{w}</div>)}
 
       {!edit && (
