@@ -50,25 +50,24 @@ export default function Pembelian() {
   const matches = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (t.length < 2) return [];
-    const out = [];
-    for (const p of products) {
-      for (const v of p.variants) {
-        if (!v.active) continue;
-        if (`${p.name} ${v.color} ${p.category}`.toLowerCase().includes(t)) out.push({ p, v });
-        if (out.length >= 12) return out;
-      }
-    }
-    return out;
+    const words = t.split(/\s+/);
+    return products
+      .filter((p) => p.active && p.variants.some((v) => v.active) && words.every((w) => `${p.name} ${p.category}`.toLowerCase().includes(w)))
+      .slice(0, 12);
   }, [q, products]);
 
   const costFor = (p, unit) => (p.cost > 0 ? String(Math.round(p.cost * unit.factor)) : '');
 
-  function add({ p, v }) {
+  function add(p) {
     const unit = p.units[0];
-    setCart((c) => [...c, { key: `${v.id}-${Date.now()}`, p, v, unitId: String(unit.id), qty: '1', cost: costFor(p, unit) }]);
+    setCart((c) => [...c, { key: `${p.id}-${Date.now()}`, p, color: '', unitId: String(unit.id), qty: '1', cost: costFor(p, unit) }]);
     setQ('');
   }
   const upd = (key, patch) => setCart((c) => c.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const variantOf = (l) => {
+    const t = l.color.trim().toLowerCase();
+    return t ? l.p.variants.find((v) => v.active && v.color.toLowerCase() === t) : null;
+  };
   const unitOf = (l) => l.p.units.find((u) => String(u.id) === l.unitId);
   const sub = (l) => Math.round((Number(l.qty) || 0) * (Number(l.cost) || 0));
   const total = cart.reduce((s, l) => s + sub(l), 0);
@@ -93,13 +92,15 @@ export default function Pembelian() {
     e.preventDefault();
     setErr(''); setMsg('');
     if (!cart.length) return setErr('Belum ada barang');
+    const bad = cart.find((l) => !variantOf(l));
+    if (bad) return setErr(`Warna "${bad.color}" untuk ${bad.p.name} tidak ada. Tulis persis seperti di daftar warna produk (atau tambah dulu di halaman Produk)`);
     if (cart.some((l) => !(Number(l.qty) > 0) || l.cost === '' || Number(l.cost) < 0)) return setErr('Isi jumlah dan harga beli semua barang');
     setBusy(true);
     const r = await fetch('/api/purchases', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         supplier_id: supplierId || null, pay_method: method, note,
-        items: cart.map((l) => ({ variant_id: l.v.id, unit_id: Number(l.unitId), qty: Number(l.qty), unit_cost: Number(l.cost) })),
+        items: cart.map((l) => ({ variant_id: variantOf(l).id, unit_id: Number(l.unitId), qty: Number(l.qty), unit_cost: Number(l.cost) })),
       }),
     });
     const d = await r.json();
@@ -121,13 +122,13 @@ export default function Pembelian() {
       <h1>Pembelian / barang masuk</h1>
       <form className="card" onSubmit={submit}>
         <div className="field" style={{ position: 'relative' }}>
-          <label>Cari barang yang dikulak (ketik min. 2 huruf: nama, warna, atau kategori)</label>
-          <input placeholder="mis. benang, resleting, 077…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <label>Cari produk yang dikulak (ketik min. 2 huruf), lalu tulis warnanya di tabel</label>
+          <input placeholder="mis. benang jahit yamalaon kecil" value={q} onChange={(e) => setQ(e.target.value)} />
           {matches.length > 0 && (
             <div className="card" style={{ position: 'absolute', zIndex: 5, left: 0, right: 0, margin: 0, maxHeight: 280, overflow: 'auto' }}>
-              {matches.map((m) => (
-                <div key={m.v.id} style={{ padding: '6px 0', cursor: 'pointer' }} onClick={() => add(m)}>
-                  <span className="muted">{m.p.category}</span> {m.p.name}{m.v.color && ` — ${m.v.color}`} <span className="muted">(stok {num(m.v.stock)} {m.p.base_unit})</span>
+              {matches.map((p) => (
+                <div key={p.id} style={{ padding: '6px 0', cursor: 'pointer' }} onClick={() => add(p)}>
+                  <span className="muted">{p.category}</span> {p.name}
                 </div>
               ))}
             </div>
@@ -144,7 +145,17 @@ export default function Pembelian() {
                 const diff = modal > 0 && l.cost !== '' && Math.round(Number(l.cost)) !== Math.round(modal);
                 return (
                   <tr key={l.key}>
-                    <td>{l.p.name}{l.v.color && ` — ${l.v.color}`}<div className="muted">tambah {num((Number(l.qty) || 0) * unit.factor)} {l.p.base_unit}</div></td>
+                    <td>
+                      {l.p.name}
+                      <input list={`warna-${l.key}`} placeholder="Tulis warna / varian" style={{ display: 'block', width: 150, marginTop: 4 }}
+                        value={l.color} onChange={(e) => upd(l.key, { color: e.target.value })} />
+                      <datalist id={`warna-${l.key}`}>{l.p.variants.filter((v) => v.active).map((v) => <option key={v.id} value={v.color} />)}</datalist>
+                      <div className="muted">
+                        {variantOf(l)
+                          ? `stok ${num(variantOf(l).stock)} → ${num(variantOf(l).stock + (Number(l.qty) || 0) * unit.factor)} ${l.p.base_unit}`
+                          : l.color.trim() ? 'warna tidak ada di produk ini' : `tambah ${num((Number(l.qty) || 0) * unit.factor)} ${l.p.base_unit}`}
+                      </div>
+                    </td>
                     <td>
                       <select value={l.unitId} onChange={(e) => {
                         const u = l.p.units.find((x) => String(x.id) === e.target.value);
