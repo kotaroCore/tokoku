@@ -10,7 +10,7 @@ export default function POS() {
   const [products, setProducts] = useState([]);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(null); // { product }
-  const [variantId, setVariantId] = useState(''); // '' = otomatis (warna tidak dicatat di kasir)
+  const [variantId, setVariantId] = useState(''); // teks bebas; bila cocok dengan warna yang ada, stok warna itu yang dikurangi
   const [unitId, setUnitId] = useState('');
   const [qty, setQty] = useState('1');
   const [disc, setDisc] = useState('0');
@@ -40,7 +40,6 @@ export default function POS() {
     if (!term) return [];
     const out = [];
     for (const p of products) {
-      if (!p.variants.some((v) => v.active)) continue;
       if (`${p.name} ${p.category}`.toLowerCase().includes(term)) out.push({ p });
       if (out.length >= 12) return out;
     }
@@ -75,8 +74,9 @@ export default function POS() {
     const d = Math.min(100, Math.max(0, Number(disc) || 0));
     let need = n * unit.factor;
     const lines = [];
-    if (variantId) {
-      const v = active.find((x) => String(x.id) === String(variantId));
+    const typed = variantId.trim().toLowerCase();
+    const v = typed && active.find((x) => x.color.trim().toLowerCase() === typed);
+    if (v) {
       if (need > free(v) + 1e-9) return setErr(`Stok tidak cukup. Sisa ${num(free(v))} ${sel.product.base_unit}.`);
       lines.push({ v, qty: n });
     } else {
@@ -182,11 +182,8 @@ export default function POS() {
                   <div><label>Diskon %</label><input inputMode="decimal" value={disc} onChange={(e) => { setDisc(e.target.value); setDiscTouched(true); }} /></div>
                 </div>
                 <div className="field">
-                  <label>Warna (opsional, tidak dicetak di nota)</label>
-                  <select value={variantId} onChange={(e) => setVariantId(e.target.value)}>
-                    <option value="">Otomatis / tidak dicatat</option>
-                    {sel.product.variants.filter((v) => v.active && v.color).map((v) => <option key={v.id} value={v.id}>{v.color}</option>)}
-                  </select>
+                  <label>Warna (opsional, ketik manual, tidak dicetak di nota)</label>
+                  <input value={variantId} onChange={(e) => setVariantId(e.target.value)} placeholder="mis. hitam (boleh kosong / tidak cocok, stok diambil otomatis)" />
                 </div>
                 <p className="muted">
                   Subtotal: {unit ? rp((Number(String(qty).replace(',', '.')) || 0) * unit.price * (1 - (Number(disc) || 0) / 100)) : '-'}
