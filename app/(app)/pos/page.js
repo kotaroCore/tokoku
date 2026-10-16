@@ -76,18 +76,37 @@ export default function POS() {
     const lines = [];
     const typed = variantId.trim().toLowerCase();
     const v = typed && active.find((x) => x.color.trim().toLowerCase() === typed);
+    const findColor = (name) => active.find((x) => x.color.trim().toLowerCase() === name.trim().toLowerCase());
     if (v) {
       if (need > free(v) + 1e-9) return setErr(`Stok tidak cukup. Sisa ${num(free(v))} ${sel.product.base_unit}.`);
       lines.push({ v, qty: n });
     } else {
+      // Rincian "hitam 2, putih 2": angka = jumlah satuan dasar per warna. Warna tanpa angka / tidak dikenal
+      // (mis. "lupa") diabaikan, sisanya diambil otomatis dari warna berstok terbanyak.
+      const taken = new Map();
+      for (const part of variantId.split(',')) {
+        const m = part.trim().match(/^(.*\S)\s+(\d+(?:[.,]\d+)?)$/);
+        const cv = m && findColor(m[1]);
+        if (!cv) continue;
+        taken.set(cv, (taken.get(cv) || 0) + Number(m[2].replace(',', '.')));
+      }
+      let given = 0;
+      for (const [cv, amt] of taken) {
+        if (amt > free(cv) + 1e-9) return setErr(`Stok ${cv.color} tidak cukup. Sisa ${num(free(cv))} ${sel.product.base_unit}.`);
+        given += amt;
+      }
+      if (given > need + 1e-9) return setErr(`Rincian warna (${num(given)}) melebihi jumlah (${num(need)} ${sel.product.base_unit}).`);
+      for (const [cv, amt] of taken) lines.push({ v: cv, qty: amt / unit.factor });
+      need -= given;
       // Otomatis: ambil dari warna berstok terbanyak, sisanya dari warna lain.
-      const total = active.reduce((x, v) => x + Math.max(0, free(v)), 0);
+      const left = (x) => free(x) - (taken.get(x) || 0);
+      const total = active.reduce((x, c) => x + Math.max(0, left(c)), 0);
       if (need > total + 1e-9) return setErr(`Stok tidak cukup. Sisa ${num(total)} ${sel.product.base_unit}.`);
-      for (const v of [...active].sort((x, y) => free(y) - free(x))) {
+      for (const c of [...active].sort((x, y) => left(y) - left(x))) {
         if (need <= 1e-9) break;
-        const take = Math.min(need, Math.max(0, free(v)));
+        const take = Math.min(need, Math.max(0, left(c)));
         if (take <= 0) continue;
-        lines.push({ v, qty: take / unit.factor });
+        lines.push({ v: c, qty: take / unit.factor });
         need -= take;
       }
     }
@@ -183,7 +202,7 @@ export default function POS() {
                 </div>
                 <div className="field">
                   <label>Warna (opsional, ketik manual, tidak dicetak di nota)</label>
-                  <input value={variantId} onChange={(e) => setVariantId(e.target.value)} placeholder="mis. hitam (boleh kosong / tidak cocok, stok diambil otomatis)" />
+                  <input value={variantId} onChange={(e) => setVariantId(e.target.value)} placeholder="mis. hitam, atau rincian: hitam 2, putih 2 (angka = per satuan dasar; sisanya otomatis)" />
                 </div>
                 <p className="muted">
                   Subtotal: {unit ? rp((Number(String(qty).replace(',', '.')) || 0) * unit.price * (1 - (Number(disc) || 0) / 100)) : '-'}
