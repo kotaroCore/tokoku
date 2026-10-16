@@ -31,7 +31,12 @@ export default function Laporan() {
             <div className="card stat"><div className="v">{rp(d.retur.total)}</div><div className="l">Retur ({d.retur.jumlah}x)</div></div>
             <div className="card stat"><div className="v">{rp(d.omset - d.retur.total)}</div><div className="l">Omset bersih</div></div>
             <div className="card stat"><div className="v">{rp(d.pembelian.total)}</div><div className="l">Pembelian ({d.pembelian.jumlah}x)</div></div>
+            <div className="card stat"><div className="v">{rp(d.laba)}</div><div className="l">Profit (laba kotor)</div></div>
+            <div className="card stat"><div className="v">{rp(d.cash - d.retur.cash - d.pembelian.cash)}</div><div className="l">Cash bersih (setelah retur &amp; pembelian)</div></div>
           </div>
+          {d.tanpaModal > 0 && (
+            <p className="muted">{d.tanpaModal} item terjual belum punya harga beli, jadi belum masuk hitungan profit.</p>
+          )}
           <div className="grid cols2">
             <div className="card">
               <h2>Produk terlaris</h2>

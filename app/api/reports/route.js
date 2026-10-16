@@ -56,6 +56,20 @@ export async function GET(req) {
      FROM purchases WHERE DATE(created_at) = ?`,
     [date]
   );
+  // Modal memakai harga beli produk saat ini; produk tanpa harga beli tidak dihitung labanya.
+  const laba = await queryOne(
+    `SELECT COALESCE(SUM(i.subtotal - i.qty * i.factor * p.cost),0) AS laba
+     FROM sale_items i JOIN sales s ON s.id = i.sale_id
+     JOIN variants v ON v.id = i.variant_id JOIN products p ON p.id = v.product_id
+     WHERE DATE(s.created_at) = ? AND p.cost > 0`,
+    [date]
+  );
+  const { v: tanpaModal } = await queryOne(
+    `SELECT COUNT(*) AS v FROM sale_items i JOIN sales s ON s.id = i.sale_id
+     JOIN variants v ON v.id = i.variant_id JOIN products p ON p.id = v.product_id
+     WHERE DATE(s.created_at) = ? AND p.cost = 0`,
+    [date]
+  );
   const { v: totalHutang } = await queryOne('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers');
-  return Response.json({ date, ...totals, hutangDibayar, retur, pembelian, perChannel, perUser, terlaris, shifts, totalHutang });
+  return Response.json({ date, ...totals, hutangDibayar, retur, pembelian, laba: laba.laba, tanpaModal, perChannel, perUser, terlaris, shifts, totalHutang });
 }
