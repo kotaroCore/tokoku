@@ -5,6 +5,24 @@ import { rp, num } from '@/lib/format';
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const METHOD = { cash: 'Cash', ewallet: 'E-wallet', transfer: 'Transfer' };
 
+// Kecilkan foto nota (maks. 1600 px, JPEG) supaya cepat diunggah dari HP.
+function shrink(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error('gagal'))), 'image/jpeg', 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Foto tidak bisa dibaca')); };
+    img.src = url;
+  });
+}
+
 export default function Pembelian() {
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -19,6 +37,8 @@ export default function Pembelian() {
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [photo, setPhoto] = useState(null); // Blob foto nota
+  const [photoUrl, setPhotoUrl] = useState('');
 
   const loadList = () => fetch(`/api/purchases?date=${date}`).then((r) => r.json()).then(setList);
   useEffect(() => {
@@ -53,6 +73,22 @@ export default function Pembelian() {
   const sub = (l) => Math.round((Number(l.qty) || 0) * (Number(l.cost) || 0));
   const total = cart.reduce((s, l) => s + sub(l), 0);
 
+  async function pickPhoto(e) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setErr('');
+    try {
+      const b = await shrink(f);
+      if (photoUrl) URL.revokeObjectURL(photoUrl);
+      setPhoto(b); setPhotoUrl(URL.createObjectURL(b));
+    } catch (x) { setErr(x.message || 'Foto tidak bisa dibaca'); }
+  }
+  function clearPhoto() {
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    setPhoto(null); setPhotoUrl('');
+  }
+
   async function submit(e) {
     e.preventDefault();
     setErr(''); setMsg('');
@@ -69,8 +105,13 @@ export default function Pembelian() {
     const d = await r.json();
     setBusy(false);
     if (!r.ok) return setErr(d.error);
-    setMsg(`Pembelian #${d.id} tersimpan (${rp(d.total)}). Stok sudah bertambah.`);
-    setCart([]); setNote('');
+    let photoMsg = '';
+    if (photo) {
+      const up = await fetch(`/api/purchases/${d.id}/receipt`, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: photo });
+      if (!up.ok) photoMsg = ' Foto nota GAGAL diunggah — pembelian tetap tersimpan.';
+    }
+    setMsg(`Pembelian #${d.id} tersimpan (${rp(d.total)}). Stok sudah bertambah.${photoMsg}`);
+    setCart([]); setNote(''); clearPhoto();
     fetch('/api/products').then((x) => x.json()).then(setProducts);
     if (date === today()) loadList(); else setDate(today());
   }
@@ -80,8 +121,8 @@ export default function Pembelian() {
       <h1>Pembelian / barang masuk</h1>
       <form className="card" onSubmit={submit}>
         <div className="field" style={{ position: 'relative' }}>
-          <label>Cari barang (ketik min. 2 huruf: nama, warna, atau kategori)</label>
-          <input value={q} onChange={(e) => setQ(e.target.value)} />
+          <label>Cari barang yang dikulak (ketik min. 2 huruf: nama, warna, atau kategori)</label>
+          <input placeholder="mis. benang, resleting, 077…" value={q} onChange={(e) => setQ(e.target.value)} />
           {matches.length > 0 && (
             <div className="card" style={{ position: 'absolute', zIndex: 5, left: 0, right: 0, margin: 0, maxHeight: 280, overflow: 'auto' }}>
               {matches.map((m) => (
@@ -140,6 +181,16 @@ export default function Pembelian() {
           </div>
           <div className="field"><label>Catatan / no. nota supplier</label><input value={note} onChange={(e) => setNote(e.target.value)} /></div>
         </div>
+        <div className="field">
+          <label>Foto nota / bukti pembelian (boleh kosong)</label>
+          <input type="file" accept="image/*" onChange={pickPhoto} />
+          {photoUrl && (
+            <div style={{ marginTop: 6 }}>
+              <img src={photoUrl} alt="Foto nota" style={{ maxWidth: 200, maxHeight: 200, borderRadius: 6 }} />
+              <div><button type="button" className="secondary" onClick={clearPhoto}>Hapus foto</button></div>
+            </div>
+          )}
+        </div>
         <h2>Total {rp(total)}</h2>
         {err && <div className="alert err">{err}</div>}
         {msg && <div className="alert ok">{msg}</div>}
@@ -154,6 +205,9 @@ export default function Pembelian() {
           <div key={p.id} style={{ marginBottom: 12 }}>
             <strong>#{p.id}</strong> • {p.created_at.slice(11, 16)} • {p.supplier_name || 'tanpa supplier'} • {METHOD[p.pay_method]} • <strong>{rp(p.total)}</strong>
             <span className="muted"> • {p.kasir}{p.note && ` • ${p.note}`}</span>
+            {p.receipt_file && (
+              <> • <a href={`/api/purchases/${p.id}/receipt`} target="_blank" rel="noreferrer">📎 Lihat foto nota</a></>
+            )}
             {p.items.map((i) => (
               <div key={i.id} className="muted" style={{ paddingLeft: 14 }}>
                 {i.product_name}{i.color && ` — ${i.color}`}: {num(i.qty)} {i.unit_name} × {rp(i.unit_cost)} = {rp(i.subtotal)}
