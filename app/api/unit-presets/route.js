@@ -11,14 +11,16 @@ function parse(b) {
   const raw = String(b.factor ?? '').trim();
   const factor = raw === '' ? null : Number(raw);
   if (factor !== null && !(factor > 0)) return { error: 'Faktor harus lebih dari 0 atau dikosongkan' };
-  return { data: { name, factor } };
+  const base_unit = String(b.base_unit || '').trim();
+  if (base_unit.length > 30) return { error: 'Satuan dasar maksimal 30 karakter' };
+  return { data: { name, factor, base_unit } };
 }
 
 // Daftar pilihan satuan jual di form produk. Kosong sampai ditambah lewat halaman Satuan.
 export async function GET() {
   const { error } = await requireApi();
   if (error) return error;
-  return Response.json(await query('SELECT id, name, factor FROM unit_presets ORDER BY factor IS NULL, factor, name'));
+  return Response.json(await query("SELECT id, name, factor, base_unit FROM unit_presets ORDER BY base_unit = '', base_unit, factor IS NULL, factor, name"));
 }
 
 export async function POST(req) {
@@ -27,7 +29,7 @@ export async function POST(req) {
   const { error: err, data } = parse(await req.json());
   if (err) return bad(err);
   if (await queryOne('SELECT id FROM unit_presets WHERE name = ?', [data.name])) return bad(`Satuan "${data.name}" sudah ada`);
-  const r = await query('INSERT INTO unit_presets (name, factor) VALUES (?, ?)', [data.name, data.factor]);
+  const r = await query('INSERT INTO unit_presets (name, factor, base_unit) VALUES (?, ?, ?)', [data.name, data.factor, data.base_unit]);
   return Response.json({ ok: true, id: r.insertId });
 }
 
@@ -38,7 +40,7 @@ export async function PUT(req) {
   const { error: err, data } = parse(b);
   if (err) return bad(err);
   if (await queryOne('SELECT id FROM unit_presets WHERE name = ? AND id <> ?', [data.name, b.id])) return bad(`Satuan "${data.name}" sudah ada`);
-  const r = await query('UPDATE unit_presets SET name = ?, factor = ? WHERE id = ?', [data.name, data.factor, b.id]);
+  const r = await query('UPDATE unit_presets SET name = ?, factor = ?, base_unit = ? WHERE id = ?', [data.name, data.factor, data.base_unit, b.id]);
   if (!r.affectedRows) return Response.json({ error: 'Satuan tidak ditemukan' }, { status: 404 });
   return Response.json({ ok: true });
 }

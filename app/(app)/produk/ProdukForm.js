@@ -101,6 +101,9 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
   const [busy, setBusy] = useState(false);
   const edit = !!f.id;
   const warns = useMemo(() => unitWarnings(f), [f]);
+  // Hanya satuan yang cocok dengan satuan dasar produk (atau yang berlaku untuk semua).
+  const base = f.base_unit.trim().toLowerCase();
+  const opts = presets.filter((o) => !o.base_unit || o.base_unit.toLowerCase() === base);
 
   const setUnit = (i, k, v) => setF({ ...f, units: f.units.map((u, j) => (j === i ? { ...u, [k]: v } : u)) });
   const setVar = (i, k, v) => setF({ ...f, variants: f.variants.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
@@ -141,7 +144,7 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
       </div>
 
       <h2>Satuan jual &amp; harga</h2>
-      <p className="muted">Faktor = jumlah satuan dasar dalam satu satuan jual (dosin = 12, gross = 144). Tiap satuan boleh punya harga sendiri. {!presets.length && <>Daftar satuan masih kosong. </>}<a href="/produk/satuan">Kelola daftar satuan</a></p>
+      <p className="muted">Faktor = jumlah satuan dasar dalam satu satuan jual (dosin = 12, gross = 144). Tiap satuan boleh punya harga sendiri. {!opts.length && <>Belum ada satuan untuk satuan dasar "{f.base_unit}". </>}<a href="/produk/satuan">Kelola daftar satuan</a></p>
       {f.units.map((u, i) => {
         const factor = Number(u.factor), price = Number(u.price);
         const per = factor > 0 && u.price !== '' ? price / factor : null;
@@ -153,8 +156,8 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
                 setF({ ...f, units: f.units.map((x, j) => (j === i ? { ...x, unit: e.target.value, factor: o?.factor != null ? String(o.factor) : x.factor } : x)) });
               }}>
                 <option value="">— pilih satuan —</option>
-                {u.unit && !presets.some((o) => o.name === u.unit) && <option value={u.unit}>{u.unit}</option>}
-                {presets.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
+                {u.unit && !opts.some((o) => o.name === u.unit) && <option value={u.unit}>{u.unit}</option>}
+                {opts.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
               </select>
             </div>
             <div className="field"><label>Judul paket (opsional)</label>
