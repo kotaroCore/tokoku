@@ -12,6 +12,7 @@ const ITEMS = [
   { href: '/stok', icon: '📊', label: 'Stok' },
   { href: '/hutang', icon: '📒', label: 'Hutang' },
   { href: '/laporan', icon: '📈', label: 'Laporan' },
+  { href: '/kulakan', icon: '🛍️', label: 'Kulakan' },
   { href: '/pembelian', icon: '📥', label: 'Pembelian' },
   { href: '/supplier', icon: '🚚', label: 'Supplier' },
   { href: '/panel', icon: '⚙️', label: 'Panel', owner: true },
