@@ -221,7 +221,7 @@ export default function Pembelian() {
             <strong>#{p.id}</strong> • {p.created_at.slice(0, 10)} • {p.supplier_name || 'tanpa supplier'}
             {p.note && <span className="muted"> • {p.note}</span>}
             {p.items.filter((i) => i.shelved < i.qty * i.factor - 1e-6).map((i) => (
-              <Shelve key={i.id} purchase={p} item={i} product={products.find((x) => x.id === i.product_id)} onDone={reloadAll} />
+              <Shelve key={i.id} purchase={p} item={i} product={products.find((x) => x.id === i.product_id)} presets={presets} onDone={reloadAll} />
             ))}
           </div>
         ))}
@@ -254,17 +254,25 @@ export default function Pembelian() {
 }
 
 // Bagi barang dari satu baris nota ke warna-warna produknya; stok tiap warna bertambah.
-function Shelve({ purchase, item, product, onDone }) {
+function Shelve({ purchase, item, product, presets, onDone }) {
   const [open, setOpen] = useState(false);
   const [vals, setVals] = useState({});
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const left = item.qty - item.shelved / item.factor; // dalam satuan nota
-  const sum = Object.values(vals).reduce((s, x) => s + (Number(x) || 0), 0);
+  // Tiap warna boleh memakai satuan sendiri (mis. nota 1 gross, dirak 6 dosin hitam + 6 dosin putih).
+  const base = (product?.base_unit || '').trim().toLowerCase();
+  const opts = [{ name: item.unit_name, factor: item.factor }];
+  for (const x of presets) {
+    if (x.factor != null && (!x.base_unit || x.base_unit.toLowerCase() === base) && !opts.some((o) => o.name === x.name)) opts.push({ name: x.name, factor: x.factor });
+  }
+  const unitOf = (id) => opts.find((o) => o.name === vals[id]?.unit) || opts[0];
+  const sumBase = Object.entries(vals).reduce((s, [id, x]) => s + (Number(x.qty) || 0) * unitOf(id).factor, 0);
+  const sum = sumBase / item.factor;
 
   async function save() {
     setErr('');
-    const lines = Object.entries(vals).filter(([, x]) => Number(x) > 0).map(([id, x]) => ({ variant_id: Number(id), qty: Number(x) }));
+    const lines = Object.entries(vals).filter(([, x]) => Number(x.qty) > 0).map(([id, x]) => ({ variant_id: Number(id), qty: Number(x.qty), factor: unitOf(id).factor }));
     if (!lines.length) return setErr('Isi jumlah minimal satu warna');
     setBusy(true);
     const r = await fetch(`/api/purchases/${purchase.id}/shelve`, {
@@ -285,18 +293,24 @@ function Shelve({ purchase, item, product, onDone }) {
       {open && product && (
         <div style={{ marginTop: 6 }}>
           <table>
-            <thead><tr><th>Warna</th><th>Stok kini</th><th>Masuk ({item.unit_name})</th></tr></thead>
+            <thead><tr><th>Warna</th><th>Stok kini</th><th>Masuk</th></tr></thead>
             <tbody>
               {product.variants.filter((v) => v.active).map((v) => (
                 <tr key={v.id}>
                   <td>{v.color || '(tanpa warna)'}</td>
                   <td>{num(v.stock)} {product.base_unit}</td>
-                  <td><input inputMode="decimal" style={{ width: 80 }} value={vals[v.id] || ''} onChange={(e) => setVals({ ...vals, [v.id]: e.target.value })} /></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <input inputMode="decimal" style={{ width: 80 }} value={vals[v.id]?.qty || ''} onChange={(e) => setVals({ ...vals, [v.id]: { ...vals[v.id], qty: e.target.value } })} />{' '}
+                    <select value={unitOf(v.id).name} onChange={(e) => setVals({ ...vals, [v.id]: { ...vals[v.id], unit: e.target.value } })}>
+                      {opts.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
+                    </select>
+                    {Number(vals[v.id]?.qty) > 0 && <span className="muted"> = {num(Number(vals[v.id].qty) * unitOf(v.id).factor)} {product.base_unit}</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="muted">Dibagi {num(sum)} dari sisa {num(left)} {item.unit_name} (= {num(sum * item.factor)} {product.base_unit})</div>
+          <div className="muted">Dibagi {num(sum)} dari sisa {num(left)} {item.unit_name} (= {num(sumBase)} {product.base_unit})</div>
           {err && <div className="alert err">{err}</div>}
           <button type="button" disabled={busy} onClick={save}>{busy ? 'Menyimpan…' : 'Simpan, tambah stok'}</button>
         </div>

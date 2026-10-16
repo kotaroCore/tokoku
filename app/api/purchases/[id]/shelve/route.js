@@ -5,7 +5,8 @@ class BadRequest extends Error {}
 const EPS = 1e-6;
 
 // Masukkan barang dari nota pembelian ke rak, dibagi per warna. Stok tiap warna bertambah.
-// Body: { item_id, lines: [{ variant_id, qty }] } dengan qty dalam satuan yang tertulis di nota.
+// Body: { item_id, lines: [{ variant_id, qty, factor? }] }. qty dalam satuan baris itu; factor = isi satuan tsb
+// dalam satuan dasar (kosong = satuan yang tertulis di nota), jadi tiap warna boleh memakai satuan berbeda.
 // Boleh dicicil, tetapi total yang dirak tidak boleh melebihi jumlah di nota.
 export async function POST(req, { params }) {
   const { session, error } = await requireApi();
@@ -32,7 +33,9 @@ export async function POST(req, { params }) {
         const [v] = await q('SELECT * FROM variants WHERE id = ? AND product_id = ? FOR UPDATE', [l.variant_id, item.product_id]);
         if (!v) throw new BadRequest('Warna tidak termasuk produk ini');
         if (!v.active) throw new BadRequest(`Warna ${v.color} sudah dinonaktifkan`);
-        const base = qty * item.factor;
+        const f = l.factor == null ? item.factor : Number(l.factor);
+        if (!(f > 0)) throw new BadRequest('Faktor satuan tidak valid');
+        const base = qty * f;
         add += base;
         done.push({ v, base });
       }
