@@ -52,10 +52,11 @@ export async function POST(req) {
       const done = [];
       for (const l of lines) {
         const [p] = await q('SELECT * FROM products WHERE id = ?', [l.product_id]);
-        const [u] = p ? await q('SELECT * FROM units WHERE id = ? AND product_id = ?', [l.unit_id, p.id]) : [];
+        // Satuan kulakan bebas (gross, dosin, ...): nama + faktor (isi dalam satuan dasar) dikirim dari layar.
+        const u = { name: String(l.unit_name || '').trim(), factor: Number(l.factor) };
         const qty = Number(l.qty);
         const cost = Number(l.unit_cost);
-        if (!p || !u || !(qty > 0) || !(cost >= 0)) throw new BadRequest('Barang, jumlah, atau harga beli tidak valid');
+        if (!p || !u.name || u.name.length > 50 || !(u.factor > 0) || !(qty > 0) || !(cost >= 0)) throw new BadRequest('Barang, jumlah, atau harga beli tidak valid');
         if (!p.active) throw new BadRequest(`Produk ${p.name} sudah dinonaktifkan`);
         const subtotal = Math.round(qty * cost);
         total += subtotal;

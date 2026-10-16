@@ -26,11 +26,12 @@ function shrink(file) {
 export default function Pembelian() {
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [presets, setPresets] = useState([]);
   const [date, setDate] = useState(today());
   const [list, setList] = useState([]);
 
   const [q, setQ] = useState('');
-  const [cart, setCart] = useState([]); // { key, variant, product, unitId, qty, cost }
+  const [cart, setCart] = useState([]); // { key, p, unit, factor, qty, cost }
   const [supplierId, setSupplierId] = useState('');
   const [method, setMethod] = useState('cash');
   const [note, setNote] = useState('');
@@ -50,6 +51,7 @@ export default function Pembelian() {
   useEffect(() => {
     fetch('/api/products').then((r) => r.json()).then(setProducts);
     fetch('/api/suppliers').then((r) => r.json()).then(setSuppliers);
+    fetch('/api/unit-presets').then((r) => r.json()).then(setPresets);
   }, []);
   useEffect(() => { loadList(); }, [date]);
   useEffect(() => { loadPending(); }, []);
@@ -63,15 +65,22 @@ export default function Pembelian() {
       .slice(0, 12);
   }, [q, products]);
 
-  const costFor = (p, unit) => (p.cost > 0 ? String(Math.round(p.cost * unit.factor)) : '');
+  const costFor = (p, factor) => (p.cost > 0 && Number(factor) > 0 ? String(Math.round(p.cost * Number(factor))) : '');
+  // Satuan kulakan dari Pilihan satuan yang cocok dengan satuan dasar produk; bila daftar kosong, pakai satuan jual produk.
+  const optsFor = (p) => {
+    const base = p.base_unit.trim().toLowerCase();
+    const o = presets.filter((x) => !x.base_unit || x.base_unit.toLowerCase() === base).map((x) => ({ name: x.name, factor: x.factor }));
+    return o.length ? o : p.units.map((u) => ({ name: u.name, factor: u.factor }));
+  };
 
   function add(p) {
-    const unit = p.units[0];
-    setCart((c) => [...c, { key: `${p.id}-${Date.now()}`, p, unitId: String(unit.id), qty: '1', cost: costFor(p, unit) }]);
+    const u = optsFor(p)[0];
+    const factor = u.factor != null ? String(u.factor) : '';
+    setCart((c) => [...c, { key: `${p.id}-${Date.now()}`, p, unit: u.name, factor, qty: '1', cost: costFor(p, factor) }]);
     setQ('');
   }
   const upd = (key, patch) => setCart((c) => c.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  const unitOf = (l) => l.p.units.find((u) => String(u.id) === l.unitId);
+  const factorOf = (l) => Number(l.factor) || 0;
   const sub = (l) => Math.round((Number(l.qty) || 0) * (Number(l.cost) || 0));
   const total = cart.reduce((s, l) => s + sub(l), 0);
 
@@ -95,13 +104,14 @@ export default function Pembelian() {
     e.preventDefault();
     setErr(''); setMsg('');
     if (!cart.length) return setErr('Belum ada barang');
+    if (cart.some((l) => !(factorOf(l) > 0))) return setErr('Isi faktor (isi per satuan) semua barang');
     if (cart.some((l) => !(Number(l.qty) > 0) || l.cost === '' || Number(l.cost) < 0)) return setErr('Isi jumlah dan harga beli semua barang');
     setBusy(true);
     const r = await fetch('/api/purchases', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         supplier_id: supplierId || null, pay_method: method, note,
-        items: cart.map((l) => ({ product_id: l.p.id, unit_id: Number(l.unitId), qty: Number(l.qty), unit_cost: Number(l.cost) })),
+        items: cart.map((l) => ({ product_id: l.p.id, unit_name: l.unit, factor: factorOf(l), qty: Number(l.qty), unit_cost: Number(l.cost) })),
       }),
     });
     const d = await r.json();
@@ -138,22 +148,27 @@ export default function Pembelian() {
 
         {cart.length > 0 && (
           <table>
-            <thead><tr><th>Barang</th><th>Satuan</th><th>Jumlah</th><th>Harga beli / satuan</th><th className="r">Subtotal</th><th></th></tr></thead>
+            <thead><tr><th>Barang</th><th>Satuan</th><th>Isi (faktor)</th><th>Jumlah</th><th>Harga beli / satuan</th><th className="r">Subtotal</th><th></th></tr></thead>
             <tbody>
               {cart.map((l) => {
-                const unit = unitOf(l);
-                const modal = l.p.cost > 0 ? l.p.cost * unit.factor : 0;
+                const opts = optsFor(l.p);
+                const modal = l.p.cost > 0 ? l.p.cost * factorOf(l) : 0;
                 const diff = modal > 0 && l.cost !== '' && Math.round(Number(l.cost)) !== Math.round(modal);
                 return (
                   <tr key={l.key}>
-                    <td>{l.p.name}<div className="muted">= {num((Number(l.qty) || 0) * unit.factor)} {l.p.base_unit}</div></td>
+                    <td>{l.p.name}<div className="muted">= {num((Number(l.qty) || 0) * factorOf(l))} {l.p.base_unit}</div></td>
                     <td>
-                      <select value={l.unitId} onChange={(e) => {
-                        const u = l.p.units.find((x) => String(x.id) === e.target.value);
-                        upd(l.key, { unitId: e.target.value, cost: l.cost === '' || l.cost === costFor(l.p, unit) ? costFor(l.p, u) : l.cost });
+                      <select value={l.unit} onChange={(e) => {
+                        const u = opts.find((x) => x.name === e.target.value);
+                        const factor = u?.factor != null ? String(u.factor) : '';
+                        upd(l.key, { unit: e.target.value, factor, cost: l.cost === '' || l.cost === costFor(l.p, l.factor) ? costFor(l.p, factor) : l.cost });
                       }}>
-                        {l.p.units.map((u) => <option key={u.id} value={u.id}>{u.name}{u.factor !== 1 && ` (${num(u.factor)})`}</option>)}
+                        {!opts.some((x) => x.name === l.unit) && <option value={l.unit}>{l.unit}</option>}
+                        {opts.map((u) => <option key={u.name} value={u.name}>{u.name}</option>)}
                       </select>
+                    </td>
+                    <td>
+                      <input inputMode="decimal" style={{ width: 70 }} value={l.factor} onChange={(e) => upd(l.key, { factor: e.target.value, cost: l.cost === '' || l.cost === costFor(l.p, l.factor) ? costFor(l.p, e.target.value) : l.cost })} />
                     </td>
                     <td><input inputMode="decimal" style={{ width: 80 }} value={l.qty} onChange={(e) => upd(l.key, { qty: e.target.value })} /></td>
                     <td>
