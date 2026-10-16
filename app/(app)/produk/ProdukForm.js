@@ -3,29 +3,23 @@ import { useMemo, useState } from 'react';
 import { rp, num } from '@/lib/format';
 
 export const CATS = ['BENANG', 'FURING', 'RESLETING', 'BENIK', 'KAIN'];
-// Pilihan satuan jual (listbox). Judul paket (mis. "3 warna") diisi terpisah dan digabung ke nama satuan saat simpan.
-const UNIT_OPTIONS = [
-  { name: 'biji', factor: '1' },
-  { name: 'paket', factor: '' },
-  { name: 'dosin', factor: '12' },
-  { name: 'gross', factor: '144' },
-  { name: 'meter', factor: '1' },
-];
-const blankUnit = () => ({ unit: 'biji', title: '', factor: '1', price: '' });
+// Pilihan satuan jual (listbox) diambil dari database (/api/unit-presets, dikelola di halaman Satuan).
+// Judul paket (mis. "3 warna") diisi terpisah dan digabung ke nama satuan saat simpan.
+const blankUnit = (presets = []) => ({ unit: presets[0]?.name || '', title: '', factor: presets[0]?.factor != null ? String(presets[0].factor) : '', price: '' });
 const fullName = (u) => [u.unit, u.title.trim()].filter(Boolean).join(' ');
 // Pisahkan nama tersimpan ("paket 3 warna") menjadi satuan + judul; nama lama di luar daftar tetap jadi satuan sendiri.
-function splitName(name) {
-  const hit = UNIT_OPTIONS.find((o) => name === o.name || name.startsWith(o.name + ' '));
+function splitName(name, presets) {
+  const hit = presets.find((o) => name === o.name || name.startsWith(o.name + ' '));
   return hit ? { unit: hit.name, title: name.slice(hit.name.length).trim() } : { unit: name, title: '' };
 }
 const blankVariant = () => ({ color: '', stock: '', level_green: '', level_yellow: '', level_red: '' });
-export const blank = () => ({ id: null, category: 'BENANG', name: '', base_unit: 'biji', cost: '', units: [blankUnit()], variants: [blankVariant()] });
+export const blank = (presets) => ({ id: null, category: 'BENANG', name: '', base_unit: 'biji', cost: '', units: [blankUnit(presets)], variants: [blankVariant()] });
 
 // Data produk dari API dijadikan isi form ubah.
-export function toForm(p) {
+export function toForm(p, presets) {
   return {
     id: p.id, category: p.category, name: p.name, base_unit: p.base_unit, cost: p.cost ? String(p.cost) : '',
-    units: p.units.map((u) => ({ id: u.id, ...splitName(u.name), factor: String(u.factor), price: String(u.price) })),
+    units: p.units.map((u) => ({ id: u.id, ...splitName(u.name, presets), factor: String(u.factor), price: String(u.price) })),
     variants: [],
   };
 }
@@ -101,7 +95,7 @@ function VariantTable({ productId, variants, onChanged }) {
   );
 }
 
-export function ProductForm({ init, cats, variants, onChanged, onDone, onCancel }) {
+export function ProductForm({ init, cats, presets, variants, onChanged, onDone, onCancel }) {
   const [f, setF] = useState(init);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -147,19 +141,20 @@ export function ProductForm({ init, cats, variants, onChanged, onDone, onCancel 
       </div>
 
       <h2>Satuan jual &amp; harga</h2>
-      <p className="muted">Faktor = jumlah satuan dasar dalam satu satuan jual (dosin = 12, gross = 144). Tiap satuan boleh punya harga sendiri.</p>
+      <p className="muted">Faktor = jumlah satuan dasar dalam satu satuan jual (dosin = 12, gross = 144). Tiap satuan boleh punya harga sendiri. {!presets.length && <>Daftar satuan masih kosong. </>}<a href="/produk/satuan">Kelola daftar satuan</a></p>
       {f.units.map((u, i) => {
         const factor = Number(u.factor), price = Number(u.price);
         const per = factor > 0 && u.price !== '' ? price / factor : null;
         return (
           <div className="unit-row" key={i}>
             <div className="field"><label>Satuan</label>
-              <select value={u.unit} onChange={(e) => {
-                const o = UNIT_OPTIONS.find((x) => x.name === e.target.value);
-                setF({ ...f, units: f.units.map((x, j) => (j === i ? { ...x, unit: e.target.value, factor: o?.factor || x.factor } : x)) });
+              <select required value={u.unit} onChange={(e) => {
+                const o = presets.find((x) => x.name === e.target.value);
+                setF({ ...f, units: f.units.map((x, j) => (j === i ? { ...x, unit: e.target.value, factor: o?.factor != null ? String(o.factor) : x.factor } : x)) });
               }}>
-                {!UNIT_OPTIONS.some((o) => o.name === u.unit) && <option value={u.unit}>{u.unit}</option>}
-                {UNIT_OPTIONS.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
+                <option value="">— pilih satuan —</option>
+                {u.unit && !presets.some((o) => o.name === u.unit) && <option value={u.unit}>{u.unit}</option>}
+                {presets.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
               </select>
             </div>
             <div className="field"><label>Judul paket (opsional)</label>
@@ -175,7 +170,7 @@ export function ProductForm({ init, cats, variants, onChanged, onDone, onCancel 
           </div>
         );
       })}
-      <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), factor: '' }] })}>+ Satuan</button>
+      <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Satuan</button>
       {warns.map((w, i) => <div key={i} className="alert err" style={{ marginTop: 8 }}>{w}</div>)}
 
       {!edit && (

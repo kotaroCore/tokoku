@@ -29,6 +29,7 @@ export default function Produk() {
         <div><label>Cari</label><input value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <div><label><input type="checkbox" checked={showOff} onChange={(e) => setShowOff(e.target.checked)} style={{ width: 'auto' }} /> Tampilkan nonaktif</label></div>
         <div><button onClick={() => router.push('/produk/baru')}>+ Produk baru</button></div>
+        <div><button className="secondary" onClick={() => router.push('/produk/satuan')}>Pilihan satuan</button></div>
       </div>
 
       <div className="card">
