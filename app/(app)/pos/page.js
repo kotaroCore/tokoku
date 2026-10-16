@@ -330,6 +330,17 @@ export default function POS() {
   );
 }
 
+// Nota hanya per produk: baris yang terpecah per warna digabung (produk, satuan, harga, diskon sama).
+function mergeItems(items) {
+  const out = new Map();
+  for (const i of items) {
+    const key = `${i.product_name}|${i.unit_name}|${i.unit_price}|${i.discount_pct}`;
+    const g = out.get(key);
+    if (g) { g.qty += i.qty; g.subtotal += i.subtotal; } else out.set(key, { ...i });
+  }
+  return [...out.values()];
+}
+
 function Nota({ nota, onClose }) {
   const line = { display: 'flex', justifyContent: 'space-between', gap: 8 };
   const bayar = nota.paid_cash + nota.paid_ewallet + nota.paid_transfer;
@@ -340,7 +351,7 @@ function Nota({ nota, onClose }) {
         <div className="muted">{nota.created_at}</div>
         <div className="muted">No. {nota.id} • kasir {nota.kasir}{nota.customer_name && ` • ${nota.customer_name}`}</div>
         <hr style={{ borderStyle: 'dashed' }} />
-        {nota.items.map((i) => (
+        {mergeItems(nota.items).map((i) => (
           <div key={i.id} style={{ marginBottom: 6 }}>
             <div>{i.product_name} ({i.unit_name})</div>
             <div style={line}>
