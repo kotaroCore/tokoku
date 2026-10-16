@@ -40,12 +40,19 @@ export default function Pembelian() {
   const [photo, setPhoto] = useState(null); // Blob foto nota
   const [photoUrl, setPhotoUrl] = useState('');
 
+  const [pending, setPending] = useState([]);
+  const loadPending = () => fetch('/api/purchases?pending=1').then((r) => r.json()).then(setPending);
+  const reloadAll = () => {
+    fetch('/api/products').then((x) => x.json()).then(setProducts);
+    loadPending(); loadList();
+  };
   const loadList = () => fetch(`/api/purchases?date=${date}`).then((r) => r.json()).then(setList);
   useEffect(() => {
     fetch('/api/products').then((r) => r.json()).then(setProducts);
     fetch('/api/suppliers').then((r) => r.json()).then(setSuppliers);
   }, []);
   useEffect(() => { loadList(); }, [date]);
+  useEffect(() => { loadPending(); }, []);
 
   const matches = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -60,14 +67,10 @@ export default function Pembelian() {
 
   function add(p) {
     const unit = p.units[0];
-    setCart((c) => [...c, { key: `${p.id}-${Date.now()}`, p, color: '', unitId: String(unit.id), qty: '1', cost: costFor(p, unit) }]);
+    setCart((c) => [...c, { key: `${p.id}-${Date.now()}`, p, unitId: String(unit.id), qty: '1', cost: costFor(p, unit) }]);
     setQ('');
   }
   const upd = (key, patch) => setCart((c) => c.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  const variantOf = (l) => {
-    const t = l.color.trim().toLowerCase();
-    return t ? l.p.variants.find((v) => v.active && v.color.toLowerCase() === t) : null;
-  };
   const unitOf = (l) => l.p.units.find((u) => String(u.id) === l.unitId);
   const sub = (l) => Math.round((Number(l.qty) || 0) * (Number(l.cost) || 0));
   const total = cart.reduce((s, l) => s + sub(l), 0);
@@ -92,15 +95,13 @@ export default function Pembelian() {
     e.preventDefault();
     setErr(''); setMsg('');
     if (!cart.length) return setErr('Belum ada barang');
-    const bad = cart.find((l) => !variantOf(l));
-    if (bad) return setErr(`Warna "${bad.color}" untuk ${bad.p.name} tidak ada. Tulis persis seperti di daftar warna produk (atau tambah dulu di halaman Produk)`);
     if (cart.some((l) => !(Number(l.qty) > 0) || l.cost === '' || Number(l.cost) < 0)) return setErr('Isi jumlah dan harga beli semua barang');
     setBusy(true);
     const r = await fetch('/api/purchases', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         supplier_id: supplierId || null, pay_method: method, note,
-        items: cart.map((l) => ({ variant_id: variantOf(l).id, unit_id: Number(l.unitId), qty: Number(l.qty), unit_cost: Number(l.cost) })),
+        items: cart.map((l) => ({ product_id: l.p.id, unit_id: Number(l.unitId), qty: Number(l.qty), unit_cost: Number(l.cost) })),
       }),
     });
     const d = await r.json();
@@ -111,9 +112,9 @@ export default function Pembelian() {
       const up = await fetch(`/api/purchases/${d.id}/receipt`, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: photo });
       if (!up.ok) photoMsg = ' Foto nota GAGAL diunggah — pembelian tetap tersimpan.';
     }
-    setMsg(`Pembelian #${d.id} tersimpan (${rp(d.total)}). Stok sudah bertambah.${photoMsg}`);
+    setMsg(`Pembelian #${d.id} tersimpan (${rp(d.total)}). Stok belum bertambah: masukkan ke rak per warna di bagian "Menunggu masuk rak".${photoMsg}`);
     setCart([]); setNote(''); clearPhoto();
-    fetch('/api/products').then((x) => x.json()).then(setProducts);
+    loadPending();
     if (date === today()) loadList(); else setDate(today());
   }
 
@@ -122,7 +123,7 @@ export default function Pembelian() {
       <h1>Pembelian / barang masuk</h1>
       <form className="card" onSubmit={submit}>
         <div className="field" style={{ position: 'relative' }}>
-          <label>Cari produk yang dikulak (ketik min. 2 huruf), lalu tulis warnanya di tabel</label>
+          <label>Cari produk yang dikulak (ketik min. 2 huruf), warna diisi nanti saat barang masuk rak</label>
           <input placeholder="mis. benang jahit yamalaon kecil" value={q} onChange={(e) => setQ(e.target.value)} />
           {matches.length > 0 && (
             <div className="card" style={{ position: 'absolute', zIndex: 5, left: 0, right: 0, margin: 0, maxHeight: 280, overflow: 'auto' }}>
@@ -145,17 +146,7 @@ export default function Pembelian() {
                 const diff = modal > 0 && l.cost !== '' && Math.round(Number(l.cost)) !== Math.round(modal);
                 return (
                   <tr key={l.key}>
-                    <td>
-                      {l.p.name}
-                      <input list={`warna-${l.key}`} placeholder="Tulis warna / varian" style={{ display: 'block', width: 150, marginTop: 4 }}
-                        value={l.color} onChange={(e) => upd(l.key, { color: e.target.value })} />
-                      <datalist id={`warna-${l.key}`}>{l.p.variants.filter((v) => v.active).map((v) => <option key={v.id} value={v.color} />)}</datalist>
-                      <div className="muted">
-                        {variantOf(l)
-                          ? `stok ${num(variantOf(l).stock)} → ${num(variantOf(l).stock + (Number(l.qty) || 0) * unit.factor)} ${l.p.base_unit}`
-                          : l.color.trim() ? 'warna tidak ada di produk ini' : `tambah ${num((Number(l.qty) || 0) * unit.factor)} ${l.p.base_unit}`}
-                      </div>
-                    </td>
+                    <td>{l.p.name}<div className="muted">= {num((Number(l.qty) || 0) * unit.factor)} {l.p.base_unit}</div></td>
                     <td>
                       <select value={l.unitId} onChange={(e) => {
                         const u = l.p.units.find((x) => String(x.id) === e.target.value);
@@ -208,6 +199,20 @@ export default function Pembelian() {
         <button disabled={busy || !cart.length}>{busy ? 'Menyimpan…' : 'Simpan pembelian (langsung lunas)'}</button>
       </form>
 
+      <div className="card">
+        <h2>Menunggu masuk rak</h2>
+        {pending.map((p) => (
+          <div key={p.id} style={{ marginBottom: 14 }}>
+            <strong>#{p.id}</strong> • {p.created_at.slice(0, 10)} • {p.supplier_name || 'tanpa supplier'}
+            {p.note && <span className="muted"> • {p.note}</span>}
+            {p.items.filter((i) => i.shelved < i.qty * i.factor - 1e-6).map((i) => (
+              <Shelve key={i.id} purchase={p} item={i} product={products.find((x) => x.id === i.product_id)} onDone={reloadAll} />
+            ))}
+          </div>
+        ))}
+        {pending.length === 0 && <div className="muted">Semua barang sudah masuk rak.</div>}
+      </div>
+
       <div className="card row">
         <div><label>Riwayat pembelian tanggal</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
       </div>
@@ -222,6 +227,7 @@ export default function Pembelian() {
             {p.items.map((i) => (
               <div key={i.id} className="muted" style={{ paddingLeft: 14 }}>
                 {i.product_name}{i.color && ` — ${i.color}`}: {num(i.qty)} {i.unit_name} × {rp(i.unit_cost)} = {rp(i.subtotal)}
+                {i.product_id && <> • {i.shelved >= i.qty * i.factor - 1e-6 ? 'sudah masuk rak' : `dirak ${num(i.shelved / i.factor)} dari ${num(i.qty)} ${i.unit_name}`}</>}
               </div>
             ))}
           </div>
@@ -229,5 +235,57 @@ export default function Pembelian() {
         {list.length === 0 && <div className="muted">Tidak ada pembelian pada tanggal ini.</div>}
       </div>
     </>
+  );
+}
+
+// Bagi barang dari satu baris nota ke warna-warna produknya; stok tiap warna bertambah.
+function Shelve({ purchase, item, product, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [vals, setVals] = useState({});
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const left = item.qty - item.shelved / item.factor; // dalam satuan nota
+  const sum = Object.values(vals).reduce((s, x) => s + (Number(x) || 0), 0);
+
+  async function save() {
+    setErr('');
+    const lines = Object.entries(vals).filter(([, x]) => Number(x) > 0).map(([id, x]) => ({ variant_id: Number(id), qty: Number(x) }));
+    if (!lines.length) return setErr('Isi jumlah minimal satu warna');
+    setBusy(true);
+    const r = await fetch(`/api/purchases/${purchase.id}/shelve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: item.id, lines }),
+    });
+    const d = await r.json();
+    setBusy(false);
+    if (!r.ok) return setErr(d.error);
+    setOpen(false); setVals({});
+    onDone();
+  }
+
+  return (
+    <div style={{ paddingLeft: 14, marginTop: 6 }}>
+      {item.product_name}: {num(item.qty)} {item.unit_name} di nota, <strong>sisa {num(left)} {item.unit_name}</strong> belum dirak{' '}
+      <button type="button" className="secondary" onClick={() => setOpen(!open)}>{open ? 'Tutup' : 'Masuk rak'}</button>
+      {open && product && (
+        <div style={{ marginTop: 6 }}>
+          <table>
+            <thead><tr><th>Warna</th><th>Stok kini</th><th>Masuk ({item.unit_name})</th></tr></thead>
+            <tbody>
+              {product.variants.filter((v) => v.active).map((v) => (
+                <tr key={v.id}>
+                  <td>{v.color || '(tanpa warna)'}</td>
+                  <td>{num(v.stock)} {product.base_unit}</td>
+                  <td><input inputMode="decimal" style={{ width: 80 }} value={vals[v.id] || ''} onChange={(e) => setVals({ ...vals, [v.id]: e.target.value })} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="muted">Dibagi {num(sum)} dari sisa {num(left)} {item.unit_name} (= {num(sum * item.factor)} {product.base_unit})</div>
+          {err && <div className="alert err">{err}</div>}
+          <button type="button" disabled={busy} onClick={save}>{busy ? 'Menyimpan…' : 'Simpan, tambah stok'}</button>
+        </div>
+      )}
+    </div>
   );
 }
