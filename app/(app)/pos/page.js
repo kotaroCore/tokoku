@@ -9,7 +9,8 @@ const post = (url, body) =>
 export default function POS() {
   const [products, setProducts] = useState([]);
   const [q, setQ] = useState('');
-  const [sel, setSel] = useState(null); // { product, variant }
+  const [sel, setSel] = useState(null); // { product }
+  const [variantId, setVariantId] = useState(''); // '' = otomatis (warna tidak dicatat di kasir)
   const [unitId, setUnitId] = useState('');
   const [qty, setQty] = useState('1');
   const [disc, setDisc] = useState('0');
@@ -39,11 +40,9 @@ export default function POS() {
     if (!term) return [];
     const out = [];
     for (const p of products) {
-      for (const v of p.variants) {
-        if (!v.active) continue;
-        if (`${p.name} ${v.color} ${p.category}`.toLowerCase().includes(term)) out.push({ p, v });
-        if (out.length >= 12) return out;
-      }
+      if (!p.variants.some((v) => v.active)) continue;
+      if (`${p.name} ${p.category}`.toLowerCase().includes(term)) out.push({ p });
+      if (out.length >= 12) return out;
     }
     return out;
   }, [q, products]);
@@ -57,7 +56,8 @@ export default function POS() {
   }, [sel, unit, qty, discTouched]);
 
   function pick(m) {
-    setSel({ product: m.p, variant: m.v });
+    setSel({ product: m.p });
+    setVariantId('');
     setUnitId(String(m.p.units[0]?.id ?? ''));
     setQty('1');
     setDisc('0');
@@ -69,14 +69,29 @@ export default function POS() {
     setErr('');
     const n = Number(String(qty).replace(',', '.'));
     if (!sel || !unit || !(n > 0)) return setErr('Pilih produk, satuan, dan jumlah yang benar.');
-    const inCart = cart
-      .filter((c) => c.variant.id === sel.variant.id)
-      .reduce((s, c) => s + c.qty * c.unit.factor, 0);
-    if (inCart + n * unit.factor > sel.variant.stock + 1e-9) {
-      return setErr(`Stok tidak cukup. Sisa ${num(sel.variant.stock - inCart)} ${sel.product.base_unit}.`);
-    }
+    const used = (id) => cart.filter((c) => c.variant.id === id).reduce((x, c) => x + c.qty * c.unit.factor, 0);
+    const free = (v) => v.stock - used(v.id);
+    const active = sel.product.variants.filter((v) => v.active);
     const d = Math.min(100, Math.max(0, Number(disc) || 0));
-    setCart([...cart, { product: sel.product, variant: sel.variant, unit, qty: n, disc: d }]);
+    let need = n * unit.factor;
+    const lines = [];
+    if (variantId) {
+      const v = active.find((x) => String(x.id) === String(variantId));
+      if (need > free(v) + 1e-9) return setErr(`Stok tidak cukup. Sisa ${num(free(v))} ${sel.product.base_unit}.`);
+      lines.push({ v, qty: n });
+    } else {
+      // Otomatis: ambil dari warna berstok terbanyak, sisanya dari warna lain.
+      const total = active.reduce((x, v) => x + Math.max(0, free(v)), 0);
+      if (need > total + 1e-9) return setErr(`Stok tidak cukup. Sisa ${num(total)} ${sel.product.base_unit}.`);
+      for (const v of [...active].sort((x, y) => free(y) - free(x))) {
+        if (need <= 1e-9) break;
+        const take = Math.min(need, Math.max(0, free(v)));
+        if (take <= 0) continue;
+        lines.push({ v, qty: take / unit.factor });
+        need -= take;
+      }
+    }
+    setCart([...cart, ...lines.map((l) => ({ product: sel.product, variant: l.v, unit, qty: l.qty, disc: d }))]);
     setSel(null);
   }
 
@@ -141,13 +156,13 @@ export default function POS() {
           <div className="card">
             <h2>1. Tambah item</h2>
             <div className="field">
-              <label>Cari produk / warna</label>
+              <label>Cari produk</label>
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="mis. benang yamalaon hitam" autoFocus />
               {matches.length > 0 && (
                 <div className="suggest">
                   {matches.map((m) => (
-                    <div key={m.v.id} onClick={() => pick(m)}>
-                      {m.p.name} {m.v.color && `— ${m.v.color}`} <span className="muted">(stok {num(m.v.stock)} {m.p.base_unit})</span>
+                    <div key={m.p.id} onClick={() => pick(m)}>
+                      {m.p.name}
                     </div>
                   ))}
                 </div>
@@ -155,7 +170,7 @@ export default function POS() {
             </div>
             {sel && (
               <>
-                <p><strong>{sel.product.name}</strong> {sel.variant.color && `— ${sel.variant.color}`} <span className="muted">stok {num(sel.variant.stock)} {sel.product.base_unit}</span></p>
+                <p><strong>{sel.product.name}</strong></p>
                 <div className="row">
                   <div>
                     <label>Satuan</label>
@@ -165,6 +180,13 @@ export default function POS() {
                   </div>
                   <div><label>Jumlah</label><input inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
                   <div><label>Diskon %</label><input inputMode="decimal" value={disc} onChange={(e) => { setDisc(e.target.value); setDiscTouched(true); }} /></div>
+                </div>
+                <div className="field">
+                  <label>Warna (opsional, tidak dicetak di nota)</label>
+                  <select value={variantId} onChange={(e) => setVariantId(e.target.value)}>
+                    <option value="">Otomatis / tidak dicatat</option>
+                    {sel.product.variants.filter((v) => v.active && v.color).map((v) => <option key={v.id} value={v.id}>{v.color}</option>)}
+                  </select>
                 </div>
                 <p className="muted">
                   Subtotal: {unit ? rp((Number(String(qty).replace(',', '.')) || 0) * unit.price * (1 - (Number(disc) || 0) / 100)) : '-'}
@@ -184,7 +206,7 @@ export default function POS() {
                 <tbody>
                   {cart.map((c, i) => (
                     <tr key={i}>
-                      <td>{c.product.name} {c.variant.color && `(${c.variant.color})`}{c.disc > 0 && <span className="muted"> diskon {c.disc}%</span>}</td>
+                      <td>{c.product.name}{c.disc > 0 && <span className="muted"> diskon {c.disc}%</span>}</td>
                       <td className="r">{num(c.qty)} {c.unit.name}</td>
                       <td className="r">{rp(lineTotal(c))}</td>
                       <td><button className="secondary" onClick={() => setCart(cart.filter((_, j) => j !== i))}>×</button></td>
