@@ -124,8 +124,26 @@ export default function POS() {
     setSel(null);
   }
 
-  const lineTotal = (c) => Math.round(c.qty * c.unit.price * (1 - c.disc / 100));
-  const total = cart.reduce((s, c) => s + lineTotal(c), 0);
+  // Sama dengan server: satu produk/satuan/diskon yang terpecah ke beberapa warna dibulatkan sekali, selisih ke baris terakhir.
+  const subtotals = (() => {
+    const out = [];
+    const groups = new Map();
+    cart.forEach((c, i) => {
+      const key = `${c.product.id}:${c.unit.id}:${c.disc}`;
+      groups.set(key, [...(groups.get(key) || []), i]);
+    });
+    for (const idx of groups.values()) {
+      const part = (i) => cart[i].qty * cart[i].unit.price * (1 - cart[i].disc / 100);
+      let rest = Math.round(idx.reduce((s, i) => s + part(i), 0));
+      idx.forEach((i, k) => {
+        out[i] = k === idx.length - 1 ? rest : Math.round(part(i));
+        rest -= out[i];
+      });
+    }
+    return out;
+  })();
+  const lineTotal = (c) => subtotals[cart.indexOf(c)];
+  const total = subtotals.reduce((s, x) => s + x, 0);
   const paid = (Number(cash) || 0) + (Number(ewallet) || 0) + (Number(transfer) || 0);
   const oldPay = Number(payDebt) || 0;
   const hutangBaru = Math.max(0, total - Math.max(0, paid - oldPay));

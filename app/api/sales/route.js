@@ -36,10 +36,25 @@ export async function POST(req) {
           throw new BadRequest(`Stok ${p.name} ${v.color} tidak cukup (sisa ${v.stock} ${p.base_unit})`);
         }
         const disc = Math.min(100, Math.max(0, Number(it.discount_pct) || 0));
-        const subtotal = Math.round(qty * u.price * (1 - disc / 100));
-        total += subtotal;
-        lines.push({ v, p, u, qty, disc, subtotal, need });
+        lines.push({ v, p, u, qty, disc, subtotal: 0, need });
       }
+      // Satu penjualan yang dipecah ke beberapa warna dihitung sebagai satu kelompok: dibulatkan sekali,
+      // selisih pembulatan ke baris terakhir, supaya 1 dosin tidak jadi Rp 23.001.
+      const groups = new Map();
+      for (const l of lines) {
+        const key = `${l.p.id}:${l.u.id}:${l.disc}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(l);
+      }
+      for (const g of groups.values()) {
+        const exact = g.reduce((s, l) => s + l.qty * l.u.price * (1 - l.disc / 100), 0);
+        let rest = Math.round(exact);
+        g.forEach((l, i) => {
+          l.subtotal = i === g.length - 1 ? rest : Math.round(l.qty * l.u.price * (1 - l.disc / 100));
+          rest -= l.subtotal;
+        });
+      }
+      for (const l of lines) total += l.subtotal;
 
       // Uang yang masuk dipakai untuk membayar hutang lama dulu, sisanya untuk belanja ini.
       const paid = paidCash + paidEwallet + paidTransfer;
