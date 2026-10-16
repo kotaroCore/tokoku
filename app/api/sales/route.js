@@ -36,7 +36,7 @@ export async function POST(req) {
           throw new BadRequest(`Stok ${p.name} ${v.color} tidak cukup (sisa ${v.stock} ${p.base_unit})`);
         }
         const disc = Math.min(100, Math.max(0, Number(it.discount_pct) || 0));
-        lines.push({ v, p, u, qty, disc, subtotal: 0, need });
+        lines.push({ v, p, u, qty, disc, subtotal: 0, need, auto: !!it.auto });
       }
       // Satu penjualan yang dipecah ke beberapa warna dihitung sebagai satu kelompok: dibulatkan sekali,
       // selisih pembulatan ke baris terakhir, supaya 1 dosin tidak jadi Rp 23.001.
@@ -93,9 +93,9 @@ export async function POST(req) {
 
       for (const l of lines) {
         await q(
-          `INSERT INTO sale_items (sale_id, variant_id, product_name, color, unit_name, qty, factor, unit_price, discount_pct, subtotal)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [sale.insertId, l.v.id, l.p.name, l.v.color, l.u.name, l.qty, l.u.factor, l.u.price, l.disc, l.subtotal]
+          `INSERT INTO sale_items (sale_id, variant_id, product_name, color, unit_name, qty, factor, unit_price, discount_pct, subtotal, auto_pick)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [sale.insertId, l.v.id, l.p.name, l.v.color, l.u.name, l.qty, l.u.factor, l.u.price, l.disc, l.subtotal, l.auto ? 1 : 0]
         );
         await q('UPDATE variants SET stock = stock - ? WHERE id = ?', [l.need, l.v.id]);
       }

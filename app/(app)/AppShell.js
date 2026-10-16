@@ -9,6 +9,7 @@ const ITEMS = [
   { href: '/pos', icon: '🛒', label: 'Kasir' },
   { href: '/riwayat', icon: '🧾', label: 'Riwayat' },
   { href: '/produk', icon: '📦', label: 'Produk' },
+  { href: '/cek', icon: '🔍', label: 'Cek' },
   { href: '/stok', icon: '📊', label: 'Stok' },
   { href: '/hutang', icon: '📒', label: 'Hutang' },
   { href: '/laporan', icon: '📈', label: 'Laporan' },

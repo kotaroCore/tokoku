@@ -31,11 +31,6 @@ export default function POS() {
   const [err, setErr] = useState('');
   const [nota, setNota] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState('');
-  // Catatan stok yang diambil otomatis hari ini (disimpan di browser) untuk dicocokkan sore hari.
-  const logKey = () => 'tokoku-auto-' + new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const [autoLog, setAutoLog] = useState([]);
-  useEffect(() => { try { setAutoLog(JSON.parse(localStorage.getItem(logKey()) || '[]')); } catch {} }, []);
 
   const loadProducts = () => fetch('/api/products').then((r) => r.json()).then(setProducts);
   useEffect(() => { loadProducts(); }, []);
@@ -71,7 +66,6 @@ export default function POS() {
 
   function addToCart() {
     setErr('');
-    setNotice('');
     const n = Number(String(qty).replace(',', '.'));
     if (!sel || !unit || !(n > 0)) return setErr('Pilih produk, satuan, dan jumlah yang benar.');
     const used = (id) => cart.filter((c) => c.variant.id === id).reduce((x, c) => x + c.qty * c.unit.factor, 0);
@@ -116,10 +110,6 @@ export default function POS() {
         need -= take;
       }
     }
-    const autos = lines.filter((l) => l.auto);
-    if (autos.length) {
-      setNotice(`Stok diambil otomatis (${sel.product.name}): ` + autos.map((l) => `${l.v.color || 'tanpa warna'} ${num(l.qty * unit.factor)} ${sel.product.base_unit}`).join(', '));
-    }
     setCart([...cart, ...lines.map((l) => ({ product: sel.product, variant: l.v, unit, qty: l.qty, disc: d, auto: !!l.auto }))]);
     setSel(null);
   }
@@ -144,6 +134,17 @@ export default function POS() {
   })();
   const lineTotal = (c) => subtotals[cart.indexOf(c)];
   const total = subtotals.reduce((s, x) => s + x, 0);
+  // Keranjang ditampilkan per produk (tanpa warna); pecahan warna hanya urusan stok.
+  const cartRows = (() => {
+    const groups = new Map();
+    cart.forEach((c, i) => {
+      const key = `${c.product.id}:${c.unit.id}:${c.disc}`;
+      if (!groups.has(key)) groups.set(key, { c, idx: [], qty: 0, sub: 0 });
+      const g = groups.get(key);
+      g.idx.push(i); g.qty += c.qty; g.sub += subtotals[i];
+    });
+    return [...groups.values()];
+  })();
   const paid = (Number(cash) || 0) + (Number(ewallet) || 0) + (Number(transfer) || 0);
   const oldPay = Number(payDebt) || 0;
   const hutangBaru = Math.max(0, total - Math.max(0, paid - oldPay));
@@ -173,7 +174,7 @@ export default function POS() {
     setBusy(true);
     const r = await post('/api/sales', {
       channel,
-      items: cart.map((c) => ({ variant_id: c.variant.id, unit_id: c.unit.id, qty: c.qty, discount_pct: c.disc })),
+      items: cart.map((c) => ({ variant_id: c.variant.id, unit_id: c.unit.id, qty: c.qty, auto: c.auto, discount_pct: c.disc })),
       customer_name: custName,
       customer_phone: custPhone,
       customer_address: custAddr,
@@ -187,16 +188,6 @@ export default function POS() {
     if (!r.ok) return setErr(d.error);
     const n = await fetch(`/api/sales?id=${d.saleId}`).then((x) => x.json());
     setNota({ ...n, sisaHutang: d.sisaHutang });
-    const autos = cart.filter((c) => c.auto).map((c) => ({
-      t: new Date().toTimeString().slice(0, 5), nota: d.saleId, produk: c.product.name,
-      warna: c.variant.color || 'tanpa warna', jml: c.qty * c.unit.factor, satuan: c.product.base_unit,
-    }));
-    if (autos.length) {
-      const next = [...autoLog, ...autos];
-      setAutoLog(next);
-      try { localStorage.setItem(logKey(), JSON.stringify(next)); } catch {}
-    }
-    setNotice('');
     setCart([]);
     setCash(''); setEwallet(''); setTransfer(''); setPayDebt('');
     setCustName(''); setCustPhone(''); setCustAddr(''); setKnown(null);
@@ -239,8 +230,8 @@ export default function POS() {
                   <div><label>Diskon %</label><input inputMode="decimal" value={disc} onChange={(e) => { setDisc(e.target.value); setDiscTouched(true); }} /></div>
                 </div>
                 <div className="field">
-                  <label>Warna (opsional, ketik manual, tidak dicetak di nota)</label>
-                  <input value={variantId} onChange={(e) => setVariantId(e.target.value)} placeholder="mis. hitam, atau rincian: hitam 2, putih 2 (angka = per satuan dasar; sisanya otomatis)" />
+                  <label>Warna (opsional; kosongkan kalau tidak yakin, dicek sore)</label>
+                  <input value={variantId} onChange={(e) => setVariantId(e.target.value)} placeholder="mis. hitam, atau hitam 2, putih 2 (angka = satuan dasar). Sisanya otomatis & dicek sore" />
                 </div>
                 <p className="muted">
                   Subtotal: {unit ? rp((Number(String(qty).replace(',', '.')) || 0) * unit.price * (1 - (Number(disc) || 0) / 100)) : '-'}
@@ -250,7 +241,6 @@ export default function POS() {
               </>
             )}
             {err && <div className="alert err">{err}</div>}
-            {notice && <div className="alert ok">{notice}</div>}
           </div>
 
           <div className="card">
@@ -259,16 +249,13 @@ export default function POS() {
               <table>
                 <thead><tr><th>Item</th><th className="r">Qty</th><th className="r">Harga satuan</th><th className="r">Subtotal</th><th></th></tr></thead>
                 <tbody>
-                  {cart.map((c, i) => (
-                    <tr key={i}>
-                      <td>
-                        {c.product.name}{c.disc > 0 && <span className="muted"> diskon {c.disc}%</span>}
-                        <br /><small className="muted">{c.variant.color || 'tanpa warna'}{c.auto ? ` · otomatis ${num(c.qty * c.unit.factor)} ${c.product.base_unit}` : ''}</small>
-                      </td>
-                      <td className="r">{num(c.qty)} {c.unit.name}</td>
-                      <td className="r">{rp(c.unit.price)}</td>
-                      <td className="r">{rp(lineTotal(c))}</td>
-                      <td><button className="secondary" onClick={() => setCart(cart.filter((_, j) => j !== i))}>×</button></td>
+                  {cartRows.map((g) => (
+                    <tr key={g.idx[0]}>
+                      <td>{g.c.product.name}{g.c.disc > 0 && <span className="muted"> diskon {g.c.disc}%</span>}</td>
+                      <td className="r">{num(g.qty)} {g.c.unit.name}</td>
+                      <td className="r">{rp(g.c.unit.price)}</td>
+                      <td className="r">{rp(g.sub)}</td>
+                      <td><button className="secondary" onClick={() => setCart(cart.filter((_, j) => !g.idx.includes(j)))}>×</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -339,20 +326,6 @@ export default function POS() {
           </button>
         </div>
       </div>
-      {autoLog.length > 0 && (
-        <div className="card">
-          <h2>Stok diambil otomatis hari ini</h2>
-          <p className="muted">Untuk dicocokkan dengan stok fisik di sore hari.</p>
-          <table>
-            <thead><tr><th>Jam</th><th>Nota</th><th>Produk</th><th>Warna</th><th className="r">Diambil</th></tr></thead>
-            <tbody>
-              {autoLog.map((a, i) => (
-                <tr key={i}><td>{a.t}</td><td>#{a.nota}</td><td>{a.produk}</td><td>{a.warna}</td><td className="r">{num(a.jml)} {a.satuan}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </>
   );
 }
