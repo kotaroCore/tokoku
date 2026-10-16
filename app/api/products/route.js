@@ -27,7 +27,8 @@ function parse(b) {
     if (!(u.price >= 0)) return { error: `Harga satuan "${u.name}" tidak valid` };
   }
   const names = units.map((u) => u.name.toLowerCase());
-  if (new Set(names).size !== names.length) return { error: 'Nama satuan tidak boleh kembar' };
+  const dup = names.find((n, i) => names.indexOf(n) !== i);
+  if (dup) return { error: `Satuan "${dup}" muncul lebih dari sekali. Beri judul paket yang berbeda (mis. "setengah lusin") agar bisa dibedakan.` };
 
   return { data: { category, name, base_unit, cost, units } };
 }

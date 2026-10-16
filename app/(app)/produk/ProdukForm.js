@@ -114,6 +114,9 @@ export function ProductForm({ init, cats, variants, onChanged, onDone, onCancel 
   async function save(e) {
     e.preventDefault();
     setErr('');
+    const names = f.units.map((u) => fullName(u).toLowerCase());
+    const dup = names.find((n, i) => names.indexOf(n) !== i);
+    if (dup) return setErr(`Satuan "${dup}" muncul lebih dari sekali. Beri judul paket yang berbeda (mis. "setengah lusin") agar bisa dibedakan.`);
     setBusy(true);
     const body = { id: f.id, category: f.category, name: f.name, base_unit: f.base_unit, cost: f.cost, units: f.units.map((u) => ({ id: u.id, name: fullName(u), factor: u.factor, price: u.price })) };
     if (!edit) body.variants = f.variants.filter((v) => v.color.trim() || f.variants.length === 1);
