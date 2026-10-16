@@ -153,7 +153,7 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
         const modalDerived = Number(f.cost) > 0 && factor > 0 ? String(Math.round(Number(f.cost) * factor)) : '';
         const modalShown = u.modalEdit ?? modalDerived;
         const setModal = (v) => {
-          const raw = v.replace(/[^d.,]/g, '').replace(',', '.');
+          const raw = v.replace(/[^0-9.,]/g, '').replace(',', '.');
           const cost = raw !== '' && factor > 0 ? String(Math.round((Number(raw) / factor) * 100) / 100) : '';
           setF({ ...f, cost, units: f.units.map((x, j) => ({ ...x, modalEdit: j === i ? raw : undefined })) });
         };
