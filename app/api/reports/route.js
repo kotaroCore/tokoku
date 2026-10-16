@@ -24,8 +24,8 @@ export async function GET(req) {
     [date]
   );
   const perUser = await query(
-    `SELECT u.name, COUNT(*) AS nota, SUM(s.total) AS omset FROM sales s JOIN users u ON u.id = s.user_id
-     WHERE DATE(s.created_at) = ? GROUP BY u.id, u.name`,
+    `SELECT u.name, s.channel, COUNT(*) AS nota, SUM(s.total) AS omset FROM sales s JOIN users u ON u.id = s.user_id
+     WHERE DATE(s.created_at) = ? GROUP BY u.id, u.name, s.channel ORDER BY u.name, s.channel`,
     [date]
   );
   const terlaris = await query(
