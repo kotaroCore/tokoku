@@ -38,7 +38,7 @@ function unitWarnings(f) {
     }
   }
   const cost = Number(f.cost);
-  if (cost > 0) for (const u of rows) if (u.price < cost * u.factor) w.push(`Harga "${u.name}" ${rp(u.price)} di bawah modal ${rp(cost * u.factor)}.`);
+  if (cost > 0) for (const u of rows) if (u.price < Math.round(cost * u.factor)) w.push(`Harga "${u.name}" ${rp(u.price)} di bawah modal ${rp(Math.round(cost * u.factor))}.`);
   return w;
 }
 
@@ -140,14 +140,23 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
         <div className="field"><label>Satuan dasar stok (biji / meter / buah)</label>
           <input required value={f.base_unit} onChange={(e) => setF({ ...f, base_unit: e.target.value })} /></div>
         <div className="field"><label>Harga beli / modal per {f.base_unit || 'satuan dasar'} (opsional)</label>
-          <input inputMode="numeric" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value })} /></div>
+          <input inputMode="numeric" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value, units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })} /></div>
       </div>
+      <div className="muted" style={{ marginTop: -4 }}>Modal per satuan jual (dosin dll.) bisa diisi langsung di tiap baris satuan di bawah; modal per {f.base_unit || 'satuan dasar'} ikut terhitung.</div>
 
       <h2>Satuan jual &amp; harga</h2>
       <p className="muted">Faktor = jumlah satuan dasar dalam satu satuan jual (dosin = 12, gross = 144). Tiap satuan boleh punya harga sendiri. {!opts.length && <>Belum ada satuan untuk satuan dasar "{f.base_unit}". </>}<a href="/produk/satuan">Kelola daftar satuan</a></p>
       {f.units.map((u, i) => {
         const factor = Number(u.factor), price = Number(u.price);
         const per = factor > 0 && u.price !== '' ? price / factor : null;
+        // Modal per satuan jual = modal per satuan dasar x faktor; boleh diketik langsung, modal dasar ikut dihitung.
+        const modalDerived = Number(f.cost) > 0 && factor > 0 ? String(Math.round(Number(f.cost) * factor)) : '';
+        const modalShown = u.modalEdit ?? modalDerived;
+        const setModal = (v) => {
+          const raw = v.replace(/[^d.,]/g, '').replace(',', '.');
+          const cost = raw !== '' && factor > 0 ? String(Math.round((Number(raw) / factor) * 100) / 100) : '';
+          setF({ ...f, cost, units: f.units.map((x, j) => ({ ...x, modalEdit: j === i ? raw : undefined })) });
+        };
         return (
           <div className="unit-row" key={i}>
             <div className="field"><label>Satuan</label>
@@ -164,6 +173,10 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
               <input value={u.title} placeholder="mis. 3 warna" onChange={(e) => setUnit(i, 'title', e.target.value)} />
             </div>
             <div className="field"><label>Faktor</label><input required inputMode="decimal" value={u.factor} onChange={(e) => setUnit(i, 'factor', e.target.value)} /></div>
+            <div className="field"><label>Harga modal</label>
+              <input inputMode="numeric" value={modalShown} onChange={(e) => setModal(e.target.value)} />
+              {factor > 0 && Number(f.cost) > 0 && <div className="muted">{rp(Number(f.cost))} per {f.base_unit}</div>}
+            </div>
             <div className="field"><label>Harga jual</label>
               <input required inputMode="numeric" value={u.price} onChange={(e) => setUnit(i, 'price', e.target.value)} />
               {per != null && factor !== 1 && <div className="muted">= {rp(per)} per {f.base_unit}</div>}
