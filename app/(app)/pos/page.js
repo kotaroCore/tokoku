@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { setBusy } from '@/lib/busy';
 import { rp, num } from '@/lib/format';
 import { autoDiscount } from '@/lib/discount';
 
@@ -34,6 +35,11 @@ export default function POS() {
 
   const loadProducts = () => fetch('/api/products').then((r) => r.json()).then(setProducts);
   useEffect(() => { loadProducts(); }, []);
+  // Keranjang terisi = sedang transaksi: logout otomatis ditunda.
+  useEffect(() => {
+    setBusy('pos', cart.length > 0);
+    return () => setBusy('pos', false);
+  }, [cart.length]);
 
   const matches = useMemo(() => {
     const term = q.trim().toLowerCase();

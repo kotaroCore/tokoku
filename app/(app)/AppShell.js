@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import LogoutButton from './LogoutButton';
+import IdleGuard from './IdleGuard';
+import OwnerNotices from './OwnerNotices';
 
 const ITEMS = [
   { href: '/', icon: '🏠', label: 'Beranda' },
@@ -35,7 +37,7 @@ const save = (key, value) => {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 };
 
-export default function AppShell({ name, role, children }) {
+export default function AppShell({ name, role, idle, children }) {
   const path = usePathname();
   const [side, setSide] = useState('open');
   const [order, setOrder] = useState(ITEMS.map((i) => i.href));
@@ -86,6 +88,9 @@ export default function AppShell({ name, role, children }) {
       )}
 
       <main>{children}</main>
+
+      <IdleGuard enabled={idle.enabled} minutes={idle.minutes} />
+      {role === 'owner' && <OwnerNotices />}
 
       <BottomBar items={items} active={active} onReorder={(hrefs) => changeOrder(hrefs)} />
       <FloatingMenu onOpen={() => setSheet(true)} />

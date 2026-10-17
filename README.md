@@ -26,3 +26,10 @@ Untuk produksi, atur `SESSION_SECRET` (string acak panjang) di `.env.local`, lal
 - Aturan diskon otomatis ada di `lib/discount.js` dan masih perlu dikonfirmasi pemilik toko.
 - Database dan tabel dibuat otomatis bila belum ada. Gunakan user MySQL khusus (bukan root) untuk produksi.
 - Stok disimpan dalam satuan dasar (biji/meter/buah); faktor satuan jual mengonversinya.
+
+## Logout otomatis & backup (panel → khusus owner)
+
+- **Logout otomatis**: atur di Panel (default 15 menit, bisa dimatikan). Berlaku untuk semua peran. Shift tetap berjalan; login berikutnya di hari yang sama melanjutkan shift itu. Selama keranjang kasir terisi, logout ditunda dan owner mendapat pop-up; setelah jam tutup (default 16:00) tidak ditunda lagi.
+- **Backup database**: seluruh tabel dalam satu snapshot `.sql.gz` (`mysqldump --single-transaction`). Otomatis (harian/6 jam/mingguan, dikejar bila PC sempat mati) atau manual lewat tombol "Backup sekarang". Simpan 30 hari. Arahkan folder ke folder Google Drive for Desktop agar naik ke Drive. Butuh `mysqldump` (XAMPP sudah ada; atau isi `MYSQLDUMP_PATH` di `.env.local`).
+- **Restore** (sengaja bukan dari panel): hentikan aplikasi, lalu `npm run restore`. Kondisi database saat ini dibackup dulu (`-pra-restore`) sebelum ditimpa. Butuh klien `mysql` (atau `MYSQL_PATH`).
+- Setelah memperbarui kode, **restart server** (`npm run dev`/`start`) agar tabel baru dibuat dan penjadwal backup aktif.

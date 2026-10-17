@@ -1,9 +1,11 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function Login() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [idleOut, setIdleOut] = useState(false);
+  useEffect(() => { setIdleOut(new URLSearchParams(window.location.search).get('idle') === '1'); }, []);
 
   async function submit(e) {
     e.preventDefault();
@@ -27,6 +29,7 @@ export default function Login() {
     <form className="card login" onSubmit={submit}>
       <h1>Tokoku</h1>
       <p className="muted">Masuk untuk memulai shift.</p>
+      {idleOut && <div className="alert">Anda keluar otomatis karena lama tidak aktif. Shift Anda tetap berjalan — masuk lagi untuk melanjutkan.</div>}
       <div className="field">
         <label>Username</label>
         <input name="username" autoFocus required />

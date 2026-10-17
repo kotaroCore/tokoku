@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Pengaturan from './Pengaturan';
 
 const ROLE = { owner: 'Owner', staff: 'Staf' };
 const blank = { username: '', name: '', password: '', role: 'staff' };
@@ -50,6 +51,8 @@ export default function Panel() {
     <>
       <h1>Panel kontrol <span className="muted" style={{ fontSize: '.9rem' }}>(khusus owner)</span></h1>
       <p className="muted">Staf bisa memakai semua fitur lain, kecuali panel ini. Pengguna tidak dihapus, hanya dinonaktifkan, supaya riwayat nota dan shift tetap utuh.</p>
+
+      <Pengaturan />
 
       <div className="card row">
         <div><h2 style={{ margin: 0 }}>Pengguna</h2></div>

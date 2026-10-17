@@ -120,3 +120,9 @@ td.r, th.r { text-align: right; }
   .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--card); border-radius: 16px 16px 0 0; padding: 16px; display: flex; flex-direction: column; gap: 6px; max-height: 80vh; overflow-y: auto; }
   .sheet a { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; color: var(--text); }
 }
+
+/* Peringatan logout otomatis & pop-up pesan owner */
+.idle-bg { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+.idle-box { max-width: 380px; text-align: center; margin: 0; }
+.toasts { position: fixed; top: 12px; right: 12px; width: min(380px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 8px; z-index: 90; }
+.toast { display: flex; gap: 10px; align-items: flex-start; margin: 0; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); }
