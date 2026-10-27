@@ -200,7 +200,11 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
             </div>
           );
         })}
-        <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Harga</button>
+        <div className="row">
+          <div className="field"><label>&nbsp;</label>
+            <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Harga</button>
+          </div>
+        </div>
         {warns.map((w, i) => <div key={i} className="alert err" style={{ marginTop: 8 }}>{w}</div>)}
       </section>
 
@@ -219,7 +223,11 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
                 {f.variants.length > 1 && <div><button type="button" className="secondary" onClick={() => setF({ ...f, variants: f.variants.filter((_, j) => j !== i) })}>Hapus</button></div>}
               </div>
             ))}
-            <button type="button" className="secondary" onClick={() => setF({ ...f, variants: [...f.variants, blankVariant()] })}>+ Limit</button>
+            <div className="row">
+              <div className="field"><label>&nbsp;</label>
+                <button type="button" className="secondary" onClick={() => setF({ ...f, variants: [...f.variants, blankVariant()] })}>+ Limit</button>
+              </div>
+            </div>
           </>
         )}
         {edit && <VariantTable productId={f.id} variants={variants} onChanged={onChanged} />}
