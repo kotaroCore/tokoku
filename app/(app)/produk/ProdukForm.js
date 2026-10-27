@@ -200,7 +200,7 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
             </div>
           );
         })}
-        <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Satuan</button>
+        <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Harga</button>
         {warns.map((w, i) => <div key={i} className="alert err" style={{ marginTop: 8 }}>{w}</div>)}
       </section>
 
@@ -219,7 +219,7 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
                 {f.variants.length > 1 && <div><button type="button" className="secondary" onClick={() => setF({ ...f, variants: f.variants.filter((_, j) => j !== i) })}>Hapus</button></div>}
               </div>
             ))}
-            <button type="button" className="secondary" onClick={() => setF({ ...f, variants: [...f.variants, blankVariant()] })}>+ Warna</button>
+            <button type="button" className="secondary" onClick={() => setF({ ...f, variants: [...f.variants, blankVariant()] })}>+ Limit</button>
           </>
         )}
         {edit && <VariantTable productId={f.id} variants={variants} onChanged={onChanged} />}
