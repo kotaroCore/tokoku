@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Pengaturan from './Pengaturan';
+import Modal from '../Modal';
 
 const ROLE = { owner: 'Owner', staff: 'Staf' };
 const blank = { username: '', name: '', password: '', role: 'staff' };
@@ -56,30 +57,31 @@ export default function Panel() {
 
       <div className="card row">
         <div><h2 style={{ margin: 0 }}>Pengguna</h2></div>
-        <div><button onClick={() => { setF(f ? null : { ...blank }); setErr(''); }}>{f ? 'Tutup' : '+ Pengguna baru'}</button></div>
+        <div><button onClick={() => { setF({ ...blank }); setErr(''); }}>+ Pengguna baru</button></div>
       </div>
 
       {msg && <div className="alert">{msg}</div>}
 
       {f && (
-        <form className="card" onSubmit={create}>
-          <h2>Pengguna baru</h2>
-          <div className="row">
-            <div className="field"><label>Username (untuk login)</label><input required value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoCapitalize="none" /></div>
-            <div className="field"><label>Nama tampilan</label><input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-          </div>
-          <div className="row">
-            <div className="field"><label>Password awal (min. 6 karakter)</label><input required type="text" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></div>
-            <div className="field"><label>Peran</label>
-              <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
-                <option value="staff">Staf — semua fitur kecuali panel ini</option>
-                <option value="owner">Owner — termasuk panel ini</option>
-              </select>
+        <Modal title="Pengguna baru" onClose={() => setF(null)}>
+          <form onSubmit={create}>
+            <div className="row">
+              <div className="field"><label>Username (untuk login)</label><input required value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoCapitalize="none" /></div>
+              <div className="field"><label>Nama tampilan</label><input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
             </div>
-          </div>
-          {err && <div className="alert err">{err}</div>}
-          <button>Simpan</button>
-        </form>
+            <div className="row">
+              <div className="field"><label>Password awal (min. 6 karakter)</label><input required type="text" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></div>
+              <div className="field"><label>Peran</label>
+                <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
+                  <option value="staff">Staf — semua fitur kecuali panel ini</option>
+                  <option value="owner">Owner — termasuk panel ini</option>
+                </select>
+              </div>
+            </div>
+            {err && <div className="alert err">{err}</div>}
+            <button>Simpan</button>
+          </form>
+        </Modal>
       )}
 
       <div className="card">

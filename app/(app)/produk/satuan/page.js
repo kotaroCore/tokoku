@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { num } from '@/lib/format';
+import Modal from '../../Modal';
 
 const blank = { id: null, name: '', factor: '', base_unit: '' };
 
@@ -38,24 +39,25 @@ export default function SatuanPilihan() {
       <h1>Pilihan satuan jual</h1>
       <p className="muted">Daftar ini muncul di listbox Satuan pada form produk. Faktor = jumlah satuan dasar dalam satu satuan (dosin = 12). "Berlaku untuk" membatasi satuan ini hanya muncul pada produk dengan satuan dasar tersebut (yard = 0,9 hanya untuk meter); kosongkan bila berlaku untuk semua. Kosongkan faktor bila isinya beda-beda tiap produk (mis. paket).</p>
       <div className="card row">
-        <div><button onClick={() => { setF(f ? null : { ...blank }); setErr(''); }}>{f ? 'Tutup' : '+ Satuan baru'}</button></div>
+        <div><button onClick={() => { setF({ ...blank }); setErr(''); }}>+ Satuan baru</button></div>
         <div><button className="secondary" onClick={() => router.push('/produk')}>Kembali ke produk</button></div>
       </div>
 
       {f && (
-        <form className="card" onSubmit={save}>
-          <h2>{f.id ? 'Ubah satuan' : 'Satuan baru'}</h2>
-          <div className="row">
-            <div className="field"><label>Nama satuan</label><input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-            <div className="field"><label>Berlaku untuk satuan dasar (kosong = semua)</label>
-              <input list="bases" value={f.base_unit || ''} placeholder="biji / meter" onChange={(e) => setF({ ...f, base_unit: e.target.value })} />
-              <datalist id="bases">{[...new Set(['biji', 'meter', 'buah', ...rows.map((r) => r.base_unit).filter(Boolean)])].map((b) => <option key={b} value={b} />)}</datalist>
+        <Modal title={f.id ? 'Ubah satuan' : 'Satuan baru'} onClose={() => setF(null)}>
+          <form onSubmit={save}>
+            <div className="row">
+              <div className="field"><label>Nama satuan</label><input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
+              <div className="field"><label>Berlaku untuk satuan dasar (kosong = semua)</label>
+                <input list="bases" value={f.base_unit || ''} placeholder="biji / meter" onChange={(e) => setF({ ...f, base_unit: e.target.value })} />
+                <datalist id="bases">{[...new Set(['biji', 'meter', 'buah', ...rows.map((r) => r.base_unit).filter(Boolean)])].map((b) => <option key={b} value={b} />)}</datalist>
+              </div>
+              <div className="field"><label>Faktor bawaan (opsional)</label><input inputMode="decimal" value={f.factor ?? ''} onChange={(e) => setF({ ...f, factor: e.target.value })} /></div>
             </div>
-            <div className="field"><label>Faktor bawaan (opsional)</label><input inputMode="decimal" value={f.factor ?? ''} onChange={(e) => setF({ ...f, factor: e.target.value })} /></div>
-          </div>
-          {err && <div className="alert err">{err}</div>}
-          <button>Simpan</button>
-        </form>
+            {err && <div className="alert err">{err}</div>}
+            <button>Simpan</button>
+          </form>
+        </Modal>
       )}
 
       <div className="card">
