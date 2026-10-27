@@ -62,7 +62,8 @@ label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 3
 .unit-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr) minmax(0, 0.8fr) minmax(0, 1.3fr) minmax(0, 1.3fr) auto; gap: 8px; align-items: start; }
 .unit-row > * { min-width: 0; }
 .unit-row .field { margin-bottom: 10px; }
-.unit-row .unit-del { padding-top: 20px; }
+.unit-row .unit-del { padding-top: 20px; display: flex; gap: 6px; flex-wrap: wrap; }
+.row-act { flex: 0 0 auto; display: flex; gap: 6px; }
 @media (max-width: 767px) {
   .unit-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .unit-row .unit-del { padding-top: 0; grid-column: 1 / -1; }
@@ -129,7 +130,7 @@ td.r, th.r { text-align: right; }
 
 /* Pop up form tambah/ubah (komponen Modal) */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-start; justify-content: center; z-index: 50; padding: 6vh 12px 12px; overflow-y: auto; }
-.modal { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; width: min(720px, 100%); box-shadow: 0 10px 30px rgba(0, 0, 0, .3); }
+.modal { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; width: min(1000px, 100%); box-shadow: 0 10px 30px rgba(0, 0, 0, .3); }
 .modal > form, .modal form.card { margin: 0; }
 .modal form.card { border: 0; padding: 0; background: none; }
 .form-sec { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }

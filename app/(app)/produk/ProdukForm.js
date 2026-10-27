@@ -196,15 +196,13 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
                 {per != null && factor !== 1 && <div className="muted">= {rp(per)} per {f.base_unit}</div>}
                 {per != null && Number(f.cost) > 0 && <div className="muted">laba {rp(per - Number(f.cost))} per {f.base_unit}</div>}
               </div>
-              {f.units.length > 1 && <div className="unit-del"><button type="button" className="secondary" onClick={() => setF({ ...f, units: f.units.filter((_, j) => j !== i) })}>Hapus</button></div>}
+              <div className="unit-del">
+                {f.units.length > 1 && <button type="button" className="secondary" onClick={() => setF({ ...f, units: f.units.filter((_, j) => j !== i) })}>Hapus</button>}
+                {i === f.units.length - 1 && <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Harga</button>}
+              </div>
             </div>
           );
         })}
-        <div className="row">
-          <div className="field"><label>&nbsp;</label>
-            <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Harga</button>
-          </div>
-        </div>
         {warns.map((w, i) => <div key={i} className="alert err" style={{ marginTop: 8 }}>{w}</div>)}
       </section>
 
@@ -220,14 +218,14 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
                 <div className="field"><label>Level hijau</label><input inputMode="decimal" value={v.level_green} onChange={(e) => setVar(i, 'level_green', e.target.value)} /></div>
                 <div className="field"><label>Kuning</label><input inputMode="decimal" value={v.level_yellow} onChange={(e) => setVar(i, 'level_yellow', e.target.value)} /></div>
                 <div className="field"><label>Merah</label><input inputMode="decimal" value={v.level_red} onChange={(e) => setVar(i, 'level_red', e.target.value)} /></div>
-                {f.variants.length > 1 && <div><button type="button" className="secondary" onClick={() => setF({ ...f, variants: f.variants.filter((_, j) => j !== i) })}>Hapus</button></div>}
+                {(f.variants.length > 1 || i === f.variants.length - 1) && (
+                  <div className="row-act">
+                    {f.variants.length > 1 && <button type="button" className="secondary" onClick={() => setF({ ...f, variants: f.variants.filter((_, j) => j !== i) })}>Hapus</button>}
+                    {i === f.variants.length - 1 && <button type="button" className="secondary" onClick={() => setF({ ...f, variants: [...f.variants, blankVariant()] })}>+ Limit</button>}
+                  </div>
+                )}
               </div>
             ))}
-            <div className="row">
-              <div className="field"><label>&nbsp;</label>
-                <button type="button" className="secondary" onClick={() => setF({ ...f, variants: [...f.variants, blankVariant()] })}>+ Limit</button>
-              </div>
-            </div>
           </>
         )}
         {edit && <VariantTable productId={f.id} variants={variants} onChanged={onChanged} />}
