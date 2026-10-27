@@ -64,7 +64,7 @@ export default function Produk() {
       {editing !== null && formInit && (
         <Modal title={editing === 'baru' ? 'Produk baru' : 'Ubah produk'} onClose={close}>
           <ProductForm
-            key={String(editing)} init={formInit} cats={cats} presets={presets} variants={cur ? cur.variants : []}
+            key={String(editing)} inModal init={formInit} cats={cats} presets={presets} variants={cur ? cur.variants : []}
             onChanged={load} onDone={() => { close(); load(); }} onCancel={close}
           />
         </Modal>

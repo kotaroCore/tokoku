@@ -130,8 +130,10 @@ td.r, th.r { text-align: right; }
 /* Pop up form tambah/ubah (komponen Modal) */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-start; justify-content: center; z-index: 50; padding: 6vh 12px 12px; overflow-y: auto; }
 .modal { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; width: min(720px, 100%); box-shadow: 0 10px 30px rgba(0, 0, 0, .3); }
-.modal > form, .modal .card { margin: 0; }
-.modal .card { border: 0; padding: 0; background: none; }
+.modal > form, .modal form.card { margin: 0; }
+.modal form.card { border: 0; padding: 0; background: none; }
+.form-sec { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+.form-sec > h2 { margin-bottom: 10px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .modal-head h2 { margin: 0; }
 .modal-head button { padding: 4px 12px; font-size: 1.2rem; line-height: 1; }

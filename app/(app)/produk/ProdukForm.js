@@ -95,7 +95,8 @@ function VariantTable({ productId, variants, onChanged }) {
   );
 }
 
-export function ProductForm({ init, cats, presets, variants, onChanged, onDone, onCancel }) {
+// inModal: judul sudah ditampilkan oleh pop up, jadi tidak diulang di dalam form.
+export function ProductForm({ init, cats, presets, variants, onChanged, onDone, onCancel, inModal = false }) {
   const [f, setF] = useState(init);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -128,94 +129,102 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
 
   return (
     <form className="card" onSubmit={save}>
-      <h2>{edit ? `Ubah produk: ${init.name}` : 'Produk baru'}</h2>
-      <div className="row">
-        <div className="field"><label>Kategori (pilih atau ketik baru)</label>
-          <input required list="cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} />
-          <datalist id="cats">{cats.map((c) => <option key={c} value={c} />)}</datalist>
-        </div>
-        <div className="field"><label>Nama produk</label><input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-      </div>
-      <div className="row">
-        <div className="field"><label>Satuan dasar stok (biji / meter / buah)</label>
-          <input required value={f.base_unit} onChange={(e) => setF({ ...f, base_unit: e.target.value })} /></div>
-        <div className="field"><label>Harga beli / modal per {f.base_unit || 'satuan dasar'} (opsional)</label>
-          <input inputMode="numeric" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value, units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })} /></div>
-      </div>
-      {f.last_buy && (
-        <div style={{ marginBottom: 8 }}>
-          <button type="button" className="secondary" onClick={() => setF({ ...f, cost: String(Math.round((f.last_buy.unit_cost / f.last_buy.factor) * 100) / 100), units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })}>
-            Pakai harga nota terakhir
-          </button>{' '}
-          <span className="muted">{rp(f.last_buy.unit_cost)} per {f.last_buy.unit_name} ({String(f.last_buy.date).slice(0, 10)}) = {rp(f.last_buy.unit_cost / f.last_buy.factor)} per {f.base_unit}. Setelah dipakai, angka masih bisa diubah manual.</span>
-        </div>
-      )}
-      <div className="muted" style={{ marginTop: -4 }}>Modal per satuan jual (dosin dll.) bisa diisi langsung di tiap baris satuan di bawah; modal per {f.base_unit || 'satuan dasar'} ikut terhitung.</div>
+      {!inModal && <h2>{edit ? `Ubah produk: ${init.name}` : 'Produk baru'}</h2>}
 
-      <h2>Satuan jual &amp; harga</h2>
-      <p className="muted">Faktor = jumlah satuan dasar dalam satu satuan jual (dosin = 12, gross = 144). Tiap satuan boleh punya harga sendiri. {!opts.length && <>Belum ada satuan untuk satuan dasar "{f.base_unit}". </>}<a href="/produk/satuan">Kelola daftar satuan</a></p>
-      {f.units.map((u, i) => {
-        const factor = Number(u.factor), price = Number(u.price);
-        const per = factor > 0 && u.price !== '' ? price / factor : null;
-        // Modal per satuan jual = modal per satuan dasar x faktor; boleh diketik langsung, modal dasar ikut dihitung.
-        const modalDerived = Number(f.cost) > 0 && factor > 0 ? String(Math.round(Number(f.cost) * factor)) : '';
-        const modalShown = u.modalEdit ?? modalDerived;
-        const setModal = (v) => {
-          const raw = v.replace(/[^0-9.,]/g, '').replace(',', '.');
-          const cost = raw !== '' && factor > 0 ? String(Math.round((Number(raw) / factor) * 100) / 100) : '';
-          setF({ ...f, cost, units: f.units.map((x, j) => ({ ...x, modalEdit: j === i ? raw : undefined })) });
-        };
-        return (
-          <div className="unit-row" key={i}>
-            <div className="field"><label>Satuan</label>
-              <select required value={u.unit} onChange={(e) => {
-                const o = presets.find((x) => x.name === e.target.value);
-                setF({ ...f, units: f.units.map((x, j) => (j === i ? { ...x, unit: e.target.value, factor: o?.factor != null ? String(o.factor) : x.factor } : x)) });
-              }}>
-                <option value="">— pilih satuan —</option>
-                {u.unit && !opts.some((o) => o.name === u.unit) && <option value={u.unit}>{u.unit}</option>}
-                {opts.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>Judul paket (opsional)</label>
-              <input value={u.title} placeholder="mis. 3 warna" onChange={(e) => setUnit(i, 'title', e.target.value)} />
-            </div>
-            <div className="field"><label>Faktor</label><input required inputMode="decimal" value={u.factor} onChange={(e) => setUnit(i, 'factor', e.target.value)} /></div>
-            <div className="field"><label>Harga modal</label>
-              <input inputMode="numeric" value={modalShown} onChange={(e) => setModal(e.target.value)} />
-              {factor > 0 && Number(f.cost) > 0 && <div className="muted">{rp(Number(f.cost))} per {f.base_unit}</div>}
-            </div>
-            <div className="field"><label>Harga jual</label>
-              <input required inputMode="numeric" value={u.price} onChange={(e) => setUnit(i, 'price', e.target.value)} />
-              {per != null && factor !== 1 && <div className="muted">= {rp(per)} per {f.base_unit}</div>}
-              {per != null && Number(f.cost) > 0 && <div className="muted">laba {rp(per - Number(f.cost))} per {f.base_unit}</div>}
-            </div>
-            {f.units.length > 1 && <div className="unit-del"><button type="button" className="secondary" onClick={() => setF({ ...f, units: f.units.filter((_, j) => j !== i) })}>Hapus</button></div>}
+      <section className="form-sec">
+        <h2>Informasi produk</h2>
+        <div className="row">
+          <div className="field"><label>Kategori (pilih atau ketik baru)</label>
+            <input required list="cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} />
+            <datalist id="cats">{cats.map((c) => <option key={c} value={c} />)}</datalist>
           </div>
-        );
-      })}
-      <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Satuan</button>
-      {warns.map((w, i) => <div key={i} className="alert err" style={{ marginTop: 8 }}>{w}</div>)}
+          <div className="field"><label>Nama produk</label><input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
+        </div>
+        <div className="row">
+          <div className="field"><label>Satuan dasar stok (biji / meter / buah)</label>
+            <input required value={f.base_unit} onChange={(e) => setF({ ...f, base_unit: e.target.value })} /></div>
+          <div className="field"><label>Harga beli / modal per {f.base_unit || 'satuan dasar'} (opsional)</label>
+            <input inputMode="numeric" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value, units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })} /></div>
+        </div>
+        {f.last_buy && (
+          <div style={{ marginBottom: 8 }}>
+            <button type="button" className="secondary" onClick={() => setF({ ...f, cost: String(Math.round((f.last_buy.unit_cost / f.last_buy.factor) * 100) / 100), units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })}>
+              Pakai harga nota terakhir
+            </button>{' '}
+            <span className="muted">{rp(f.last_buy.unit_cost)} per {f.last_buy.unit_name} ({String(f.last_buy.date).slice(0, 10)}) = {rp(f.last_buy.unit_cost / f.last_buy.factor)} per {f.base_unit}. Setelah dipakai, angka masih bisa diubah manual.</span>
+          </div>
+        )}
+        <div className="muted" style={{ marginTop: -4 }}>Modal per satuan jual (dosin dll.) bisa diisi langsung di tiap baris satuan di bawah; modal per {f.base_unit || 'satuan dasar'} ikut terhitung.</div>
+      </section>
 
-      {!edit && (
-        <>
-          <h2 style={{ marginTop: 16 }}>Warna / varian &amp; stok awal</h2>
-          <p className="muted">Stok dan level dalam satuan dasar ({f.base_unit}). Level: hijau = mulai menipis, kuning = waspada, merah = kritis (hijau &gt; kuning &gt; merah). Kosongkan nama warna bila produk tanpa warna.</p>
-          {f.variants.map((v, i) => (
-            <div className="row" key={i}>
-              <div className="field"><label>Warna / varian</label><input value={v.color} placeholder="Hitam, 110, 077" onChange={(e) => setVar(i, 'color', e.target.value)} /></div>
-              <div className="field"><label>Stok awal</label><input inputMode="decimal" value={v.stock} onChange={(e) => setVar(i, 'stock', e.target.value)} /></div>
-              <div className="field"><label>Level hijau</label><input inputMode="decimal" value={v.level_green} onChange={(e) => setVar(i, 'level_green', e.target.value)} /></div>
-              <div className="field"><label>Kuning</label><input inputMode="decimal" value={v.level_yellow} onChange={(e) => setVar(i, 'level_yellow', e.target.value)} /></div>
-              <div className="field"><label>Merah</label><input inputMode="decimal" value={v.level_red} onChange={(e) => setVar(i, 'level_red', e.target.value)} /></div>
-              {f.variants.length > 1 && <div><button type="button" className="secondary" onClick={() => setF({ ...f, variants: f.variants.filter((_, j) => j !== i) })}>Hapus</button></div>}
+      <section className="form-sec">
+        <h2>Satuan jual &amp; harga</h2>
+        <p className="muted">Faktor = jumlah satuan dasar dalam satu satuan jual (dosin = 12, gross = 144). Tiap satuan boleh punya harga sendiri. {!opts.length && <>Belum ada satuan untuk satuan dasar "{f.base_unit}". </>}<a href="/produk/satuan">Kelola daftar satuan</a></p>
+        {f.units.map((u, i) => {
+          const factor = Number(u.factor), price = Number(u.price);
+          const per = factor > 0 && u.price !== '' ? price / factor : null;
+          // Modal per satuan jual = modal per satuan dasar x faktor; boleh diketik langsung, modal dasar ikut dihitung.
+          const modalDerived = Number(f.cost) > 0 && factor > 0 ? String(Math.round(Number(f.cost) * factor)) : '';
+          const modalShown = u.modalEdit ?? modalDerived;
+          const setModal = (v) => {
+            const raw = v.replace(/[^0-9.,]/g, '').replace(',', '.');
+            const cost = raw !== '' && factor > 0 ? String(Math.round((Number(raw) / factor) * 100) / 100) : '';
+            setF({ ...f, cost, units: f.units.map((x, j) => ({ ...x, modalEdit: j === i ? raw : undefined })) });
+          };
+          return (
+            <div className="unit-row" key={i}>
+              <div className="field"><label>Satuan</label>
+                <select required value={u.unit} onChange={(e) => {
+                  const o = presets.find((x) => x.name === e.target.value);
+                  setF({ ...f, units: f.units.map((x, j) => (j === i ? { ...x, unit: e.target.value, factor: o?.factor != null ? String(o.factor) : x.factor } : x)) });
+                }}>
+                  <option value="">— pilih satuan —</option>
+                  {u.unit && !opts.some((o) => o.name === u.unit) && <option value={u.unit}>{u.unit}</option>}
+                  {opts.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
+                </select>
+              </div>
+              <div className="field"><label>Judul paket (opsional)</label>
+                <input value={u.title} placeholder="mis. 3 warna" onChange={(e) => setUnit(i, 'title', e.target.value)} />
+              </div>
+              <div className="field"><label>Faktor</label><input required inputMode="decimal" value={u.factor} onChange={(e) => setUnit(i, 'factor', e.target.value)} /></div>
+              <div className="field"><label>Harga modal</label>
+                <input inputMode="numeric" value={modalShown} onChange={(e) => setModal(e.target.value)} />
+                {factor > 0 && Number(f.cost) > 0 && <div className="muted">{rp(Number(f.cost))} per {f.base_unit}</div>}
+              </div>
+              <div className="field"><label>Harga jual</label>
+                <input required inputMode="numeric" value={u.price} onChange={(e) => setUnit(i, 'price', e.target.value)} />
+                {per != null && factor !== 1 && <div className="muted">= {rp(per)} per {f.base_unit}</div>}
+                {per != null && Number(f.cost) > 0 && <div className="muted">laba {rp(per - Number(f.cost))} per {f.base_unit}</div>}
+              </div>
+              {f.units.length > 1 && <div className="unit-del"><button type="button" className="secondary" onClick={() => setF({ ...f, units: f.units.filter((_, j) => j !== i) })}>Hapus</button></div>}
             </div>
-          ))}
-          <button type="button" className="secondary" onClick={() => setF({ ...f, variants: [...f.variants, blankVariant()] })}>+ Warna</button>
-        </>
-      )}
-      {edit && <VariantTable productId={f.id} variants={variants} onChanged={onChanged} />}
-      {edit && <p className="muted" style={{ marginTop: 12 }}>Stok dan level diatur di halaman Stok.</p>}
+          );
+        })}
+        <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Satuan</button>
+        {warns.map((w, i) => <div key={i} className="alert err" style={{ marginTop: 8 }}>{w}</div>)}
+      </section>
+
+      <section className="form-sec">
+        {!edit && (
+          <>
+            <h2>Warna / varian &amp; stok awal</h2>
+            <p className="muted">Stok dan level dalam satuan dasar ({f.base_unit}). Level: hijau = mulai menipis, kuning = waspada, merah = kritis (hijau &gt; kuning &gt; merah). Kosongkan nama warna bila produk tanpa warna.</p>
+            {f.variants.map((v, i) => (
+              <div className="row" key={i}>
+                <div className="field"><label>Warna / varian</label><input value={v.color} placeholder="Hitam, 110, 077" onChange={(e) => setVar(i, 'color', e.target.value)} /></div>
+                <div className="field"><label>Stok awal</label><input inputMode="decimal" value={v.stock} onChange={(e) => setVar(i, 'stock', e.target.value)} /></div>
+                <div className="field"><label>Level hijau</label><input inputMode="decimal" value={v.level_green} onChange={(e) => setVar(i, 'level_green', e.target.value)} /></div>
+                <div className="field"><label>Kuning</label><input inputMode="decimal" value={v.level_yellow} onChange={(e) => setVar(i, 'level_yellow', e.target.value)} /></div>
+                <div className="field"><label>Merah</label><input inputMode="decimal" value={v.level_red} onChange={(e) => setVar(i, 'level_red', e.target.value)} /></div>
+                {f.variants.length > 1 && <div><button type="button" className="secondary" onClick={() => setF({ ...f, variants: f.variants.filter((_, j) => j !== i) })}>Hapus</button></div>}
+              </div>
+            ))}
+            <button type="button" className="secondary" onClick={() => setF({ ...f, variants: [...f.variants, blankVariant()] })}>+ Warna</button>
+          </>
+        )}
+        {edit && <VariantTable productId={f.id} variants={variants} onChanged={onChanged} />}
+        {edit && <p className="muted" style={{ marginTop: 12 }}>Stok dan level diatur di halaman Stok.</p>}
+      </section>
 
       {err && <div className="alert err">{err}</div>}
       <div className="row" style={{ marginTop: 12 }}>
