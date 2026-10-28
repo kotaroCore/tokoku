@@ -1,6 +1,8 @@
 import { query, queryOne, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 
+class BadRequest extends Error {}
+
 // Penyesuaian stok (delta dalam satuan dasar) dan/atau pengaturan level reorder.
 export async function PATCH(req) {
   const { session, error } = await requireApi();
@@ -8,23 +10,32 @@ export async function PATCH(req) {
   const b = await req.json();
   const v = await queryOne('SELECT * FROM variants WHERE id = ?', [b.id]);
   if (!v) return Response.json({ error: 'Varian tidak ditemukan' }, { status: 404 });
-  await tx(async (q) => {
-    const delta = Number(b.delta) || 0;
-    if (delta) {
-      await q('UPDATE variants SET stock = stock + ? WHERE id = ?', [delta, v.id]);
-      await q('INSERT INTO stock_adjustments (variant_id, user_id, delta, note) VALUES (?, ?, ?, ?)', [
-        v.id, session.uid, delta, b.note || null,
-      ]);
-    }
-    if (b.level_green != null) {
-      await q('UPDATE variants SET level_green = ?, level_yellow = ?, level_red = ? WHERE id = ?', [
-        Number(b.level_green) || 0, Number(b.level_yellow) || 0, Number(b.level_red) || 0, v.id,
-      ]);
-    }
-    // Nonaktifkan / aktifkan warna. Tidak dihapus agar riwayat nota dan stok tetap utuh.
-    if (b.active != null) await q('UPDATE variants SET active = ? WHERE id = ?', [b.active ? 1 : 0, v.id]);
-  });
-  return Response.json({ ok: true });
+  try {
+    await tx(async (q) => {
+      const delta = Number(b.delta) || 0;
+      if (delta) {
+        // Koreksi stok wajib alasan, dan stok tidak boleh minus.
+        if (!(b.note || '').trim()) throw new BadRequest('Alasan koreksi stok wajib diisi');
+        const [{ stock }] = await q('SELECT stock FROM variants WHERE id = ? FOR UPDATE', [v.id]);
+        if (stock + delta < -1e-9) throw new BadRequest(`Stok tidak boleh minus (sisa ${stock})`);
+        await q('UPDATE variants SET stock = stock + ? WHERE id = ?', [delta, v.id]);
+        await q('INSERT INTO stock_adjustments (variant_id, user_id, delta, note) VALUES (?, ?, ?, ?)', [
+          v.id, session.uid, delta, b.note.trim(),
+        ]);
+      }
+      if (b.level_green != null) {
+        await q('UPDATE variants SET level_green = ?, level_yellow = ?, level_red = ? WHERE id = ?', [
+          Number(b.level_green) || 0, Number(b.level_yellow) || 0, Number(b.level_red) || 0, v.id,
+        ]);
+      }
+      // Nonaktifkan / aktifkan warna. Tidak dihapus agar riwayat nota dan stok tetap utuh.
+      if (b.active != null) await q('UPDATE variants SET active = ? WHERE id = ?', [b.active ? 1 : 0, v.id]);
+    });
+    return Response.json({ ok: true });
+  } catch (e) {
+    if (e instanceof BadRequest) return Response.json({ error: e.message }, { status: 400 });
+    throw e;
+  }
 }
 
 // Ganti nama warna. Nama tidak boleh kembar dengan warna lain di produk yang sama.

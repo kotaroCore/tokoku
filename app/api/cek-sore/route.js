@@ -9,7 +9,8 @@ export async function GET() {
   if (error) return error;
   const rows = await query(
     `SELECT i.id, i.qty, i.factor, i.variant_id, i.sale_id, v.color, v.product_id, p.name AS product_name, p.base_unit
-     FROM sale_items i JOIN variants v ON v.id = i.variant_id JOIN products p ON p.id = v.product_id
+     FROM sale_items i JOIN sales s ON s.id = i.sale_id AND s.status = 'lunas'
+       JOIN variants v ON v.id = i.variant_id JOIN products p ON p.id = v.product_id
      WHERE i.auto_pick = 1 AND i.auto_resolved = 0 ORDER BY p.name, i.id`
   );
   const byProduct = new Map();
@@ -42,7 +43,8 @@ export async function POST(req) {
   try {
     await tx(async (q) => {
       const items = await q(
-        `SELECT i.* FROM sale_items i JOIN variants v ON v.id = i.variant_id
+        `SELECT i.* FROM sale_items i JOIN sales s ON s.id = i.sale_id AND s.status = 'lunas'
+         JOIN variants v ON v.id = i.variant_id
          WHERE i.auto_pick = 1 AND i.auto_resolved = 0 AND v.product_id = ? FOR UPDATE`,
         [b.product_id]
       );

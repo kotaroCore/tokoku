@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export default async function Beranda() {
   const today = await queryOne(
     `SELECT COUNT(*) AS nota, COALESCE(SUM(total),0) AS omset, COALESCE(SUM(hutang),0) AS hutang
-     FROM sales WHERE DATE(created_at) = CURDATE()`
+     FROM sales WHERE status = 'lunas' AND DATE(created_at) = CURDATE()`
   );
   const { v: totalHutang } = await queryOne('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers');
   const low = await query(

@@ -14,7 +14,7 @@ export default function Riwayat() {
   const load = () => fetch(`/api/sales?date=${date}`).then((r) => r.json()).then(setRows);
   useEffect(() => { load(); setOpenId(null); }, [date]);
 
-  const shown = rows.filter((r) => `${r.id} ${r.customer_name || ''} ${r.kasir}`.toLowerCase().includes(q.toLowerCase()));
+  const shown = rows.filter((r) => `${r.nomor || r.id} ${r.customer_name || ''} ${r.kasir}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
     <>
@@ -43,7 +43,7 @@ function FragmentRow({ s, open, onToggle, onChanged }) {
   return (
     <>
       <tr onClick={onToggle} style={{ cursor: 'pointer' }}>
-        <td>#{s.id}</td>
+        <td>{s.nomor || `#${s.id}`} {s.status !== 'lunas' && <span className="muted">({s.status === 'draft' ? 'draf' : 'batal'})</span>}</td>
         <td>{s.created_at.slice(11, 16)}</td>
         <td>{s.customer_name || '-'}</td>
         <td>{s.kasir}</td>

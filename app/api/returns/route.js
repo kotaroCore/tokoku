@@ -21,6 +21,7 @@ export async function POST(req) {
       // Kunci nota supaya dua retur bersamaan tidak melebihi jumlah yang dibeli.
       const [sale] = await q('SELECT * FROM sales WHERE id = ? FOR UPDATE', [b.sale_id]);
       if (!sale) throw new BadRequest('Nota tidak ditemukan');
+      if (sale.status !== 'lunas') throw new BadRequest(`Retur hanya untuk nota lunas (nota ini ${sale.status})`);
 
       let total = 0;
       const done = [];
