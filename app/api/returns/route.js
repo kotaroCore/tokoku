@@ -4,9 +4,14 @@ import { requireApi } from '@/lib/auth';
 class BadRequest extends Error {}
 
 const METHODS = ['cash', 'ewallet', 'transfer'];
+const KONDISI = ['baik', 'cacat'];
+const BATAS_HARI = 7;
+// Aturan retur yang boleh dilewati staf. Pengecualian wajib disertai catatan.
+const PENGECUALIAN = ['lewat_7_hari', 'tanpa_nota_asli', 'paket_dibuka', 'diskon', 'benang_beda_warna', 'meteran'];
 
 // Retur sebagian atau seluruh barang dari satu nota.
 // Nilai retur memotong dulu hutang nota itu (yang belum lunas), sisanya dikembalikan sebagai uang.
+// Barang kondisi baik masuk stok jual; barang cacat masuk stok rusak.
 export async function POST(req) {
   const { session, error } = await requireApi();
   if (error) return error;
@@ -14,14 +19,26 @@ export async function POST(req) {
   const lines = (b.items || []).filter((i) => Number(i.qty) > 0);
   if (!lines.length) return Response.json({ error: 'Pilih barang yang diretur' }, { status: 400 });
   const method = METHODS.includes(b.refund_method) ? b.refund_method : 'cash';
-  const restock = b.restock !== false;
+  const pengecualian = [...new Set((b.pengecualian || []).filter((p) => PENGECUALIAN.includes(p)))];
+  if ((b.pengecualian || []).some((p) => !PENGECUALIAN.includes(p))) {
+    return Response.json({ error: 'Pengecualian tidak dikenal' }, { status: 400 });
+  }
+  const catatan = (b.note || '').trim();
 
   try {
     const result = await tx(async (q) => {
       // Kunci nota supaya dua retur bersamaan tidak melebihi jumlah yang dibeli.
-      const [sale] = await q('SELECT * FROM sales WHERE id = ? FOR UPDATE', [b.sale_id]);
+      const [sale] = await q('SELECT *, DATEDIFF(CURDATE(), DATE(created_at)) AS umur FROM sales WHERE id = ? FOR UPDATE', [b.sale_id]);
       if (!sale) throw new BadRequest('Nota tidak ditemukan');
       if (sale.status !== 'lunas') throw new BadRequest(`Retur hanya untuk nota lunas (nota ini ${sale.status})`);
+
+      // Aturan 7 hari: lewat dari batas hanya boleh dengan pengecualian dan catatan.
+      if (sale.umur > BATAS_HARI && !pengecualian.includes('lewat_7_hari')) {
+        throw new BadRequest(`Nota sudah lewat ${BATAS_HARI} hari. Pilih pengecualian "lewat 7 hari" dan isi catatan.`);
+      }
+      if (pengecualian.length && !catatan) {
+        throw new BadRequest('Retur dengan pengecualian wajib diisi catatan');
+      }
 
       let total = 0;
       const done = [];
@@ -29,6 +46,8 @@ export async function POST(req) {
       for (const l of lines) {
         if (seen.has(l.sale_item_id)) throw new BadRequest('Barang yang sama dikirim dua kali');
         seen.add(l.sale_item_id);
+        const kondisi = l.kondisi || 'baik';
+        if (!KONDISI.includes(kondisi)) throw new BadRequest('Kondisi barang tidak valid');
         const [it] = await q('SELECT * FROM sale_items WHERE id = ? AND sale_id = ?', [l.sale_item_id, sale.id]);
         if (!it) throw new BadRequest('Barang tidak ada di nota ini');
         const [prev] = await q(
@@ -43,10 +62,10 @@ export async function POST(req) {
         // Retur penuh sisa barang: ambil sisa nilai persis agar tidak ada selisih pembulatan.
         const amount = qty >= sisa - 1e-9 ? it.subtotal - prev.amount : Math.round((it.subtotal * qty) / it.qty);
         total += amount;
-        done.push({ it, qty, amount });
+        done.push({ it, qty, amount, kondisi });
       }
 
-      // Hutang nota yang belum dikurangi lewat retur sebelumnya.
+      // Hutang nota yang belum dikurangi lewat retur atau pembayaran sebelumnya.
       const [{ reduced }] = await q('SELECT COALESCE(SUM(hutang_reduced),0) AS reduced FROM sale_returns WHERE sale_id = ?', [sale.id]);
       let hutangReduced = 0;
       if (sale.customer_id) {
@@ -57,19 +76,19 @@ export async function POST(req) {
       const refund = total - hutangReduced;
 
       const r = await q(
-        `INSERT INTO sale_returns (sale_id, user_id, shift_id, total, hutang_reduced, refund_amount, refund_method, restock, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [sale.id, session.uid, session.shiftId ?? null, total, hutangReduced, refund, method, restock ? 1 : 0, (b.note || '').trim() || null]
+        `INSERT INTO sale_returns (sale_id, user_id, shift_id, total, hutang_reduced, refund_amount, refund_method, restock, note, pengecualian)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        [sale.id, session.uid, session.shiftId ?? null, total, hutangReduced, refund, method, catatan || null, pengecualian.join(',') || null]
       );
       for (const d of done) {
-        await q('INSERT INTO sale_return_items (return_id, sale_item_id, qty, amount) VALUES (?, ?, ?, ?)', [r.insertId, d.it.id, d.qty, d.amount]);
-        if (restock) {
-          const back = d.qty * d.it.factor;
-          await q('UPDATE variants SET stock = stock + ? WHERE id = ?', [back, d.it.variant_id]);
-          await q('INSERT INTO stock_adjustments (variant_id, user_id, delta, note) VALUES (?, ?, ?, ?)', [
-            d.it.variant_id, session.uid, back, `Retur nota #${sale.id}`,
-          ]);
-        }
+        await q('INSERT INTO sale_return_items (return_id, sale_item_id, qty, amount, kondisi) VALUES (?, ?, ?, ?, ?)', [r.insertId, d.it.id, d.qty, d.amount, d.kondisi]);
+        const back = d.qty * d.it.factor;
+        const rusak = d.kondisi === 'cacat';
+        const kolomStok = rusak ? 'stok_rusak' : 'stock';
+        await q(`UPDATE variants SET ${kolomStok} = ${kolomStok} + ? WHERE id = ?`, [back, d.it.variant_id]);
+        await q('INSERT INTO stock_adjustments (variant_id, user_id, delta, note, kolom) VALUES (?, ?, ?, ?, ?)', [
+          d.it.variant_id, session.uid, back, `Retur nota ${sale.nomor ?? '#' + sale.id}${rusak ? ' (cacat)' : ''}`, rusak ? 'rusak' : 'jual',
+        ]);
       }
       return { id: r.insertId, total, hutangReduced, refund, method };
     });

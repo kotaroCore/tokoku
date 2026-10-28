@@ -4,6 +4,14 @@ import { rp, num } from '@/lib/format';
 
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const METHOD = { cash: 'Cash', ewallet: 'E-wallet', transfer: 'Transfer' };
+const PENGECUALIAN = {
+  lewat_7_hari: 'Lewat 7 hari',
+  tanpa_nota_asli: 'Nota asli tidak dibawa',
+  paket_dibuka: 'Paket sudah dibuka',
+  diskon: 'Barang diskon',
+  benang_beda_warna: 'Benang beda warna',
+  meteran: 'Barang meteran',
+};
 
 export default function Riwayat() {
   const [date, setDate] = useState(today());
@@ -62,7 +70,8 @@ function FragmentRow({ s, open, onToggle, onChanged }) {
 function SaleDetail({ id, onChanged }) {
   const [sale, setSale] = useState(null);
   const [qty, setQty] = useState({}); // sale_item_id -> jumlah yang diretur (teks)
-  const [restock, setRestock] = useState(true);
+  const [kondisi, setKondisi] = useState({}); // sale_item_id -> 'baik' | 'cacat' (default baik)
+  const [pengecualian, setPengecualian] = useState([]);
   const [method, setMethod] = useState('cash');
   const [note, setNote] = useState('');
   const [err, setErr] = useState('');
@@ -118,13 +127,13 @@ function SaleDetail({ id, onChanged }) {
   async function submit(e) {
     e.preventDefault();
     setErr('');
-    const items = sale.items.filter((it) => Number(qty[it.id]) > 0).map((it) => ({ sale_item_id: it.id, qty: Number(qty[it.id]) }));
+    const items = sale.items.filter((it) => Number(qty[it.id]) > 0).map((it) => ({ sale_item_id: it.id, qty: Number(qty[it.id]), kondisi: kondisi[it.id] || 'baik' }));
     if (!items.length) return setErr('Isi jumlah barang yang diretur');
     if (!confirm(`Proses retur ${rp(preview.total)}? Ini tidak bisa dibatalkan.`)) return;
     setBusy(true);
     const r = await fetch('/api/returns', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sale_id: sale.id, items, restock, refund_method: method, note }),
+      body: JSON.stringify({ sale_id: sale.id, items, pengecualian, refund_method: method, note }),
     });
     const d = await r.json();
     setBusy(false);
@@ -176,6 +185,10 @@ function SaleDetail({ id, onChanged }) {
                     {sisa > 1e-9 ? (
                       <span style={{ whiteSpace: 'nowrap' }}>
                         <input inputMode="decimal" style={{ width: 70 }} value={qty[it.id] ?? ''} onChange={(e) => setQty({ ...qty, [it.id]: e.target.value })} />{' '}
+                        <select value={kondisi[it.id] || 'baik'} onChange={(e) => setKondisi({ ...kondisi, [it.id]: e.target.value })}>
+                          <option value="baik">Baik</option>
+                          <option value="cacat">Cacat</option>
+                        </select>{' '}
                         <button type="button" className="secondary" onClick={() => setQty({ ...qty, [it.id]: String(sisa) })}>Semua</button>
                       </span>
                     ) : <span className="muted">habis diretur</span>}
@@ -196,7 +209,13 @@ function SaleDetail({ id, onChanged }) {
               </div>
               <div className="field"><label>Catatan (alasan retur)</label><input value={note} onChange={(e) => setNote(e.target.value)} /></div>
             </div>
-            <label><input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} style={{ width: 'auto' }} /> Kembalikan barang ke stok (matikan bila rusak/cacat)</label>
+            <div className="muted" style={{ marginTop: 6 }}>Pengecualian (boleh dilewati, wajib isi catatan):</div>
+            {Object.entries(PENGECUALIAN).map(([k, label]) => (
+              <label key={k} style={{ display: 'block' }}>
+                <input type="checkbox" checked={pengecualian.includes(k)} style={{ width: 'auto' }}
+                  onChange={(e) => setPengecualian(e.target.checked ? [...pengecualian, k] : pengecualian.filter((x) => x !== k))} /> {label}
+              </label>
+            ))}
             {preview.total > 0 && (
               <div className="alert" style={{ marginTop: 8 }}>
                 Nilai retur <strong>{rp(preview.total)}</strong>
@@ -226,7 +245,7 @@ function SaleDetail({ id, onChanged }) {
               #{r.id} • {r.created_at} • {r.kasir} • {rp(r.total)}
               {r.hutang_reduced > 0 && ` • hutang -${rp(r.hutang_reduced)}`}
               {r.refund_amount > 0 && ` • kembali ${rp(r.refund_amount)} (${METHOD[r.refund_method]})`}
-              {!r.restock && ' • tidak masuk stok'}{r.note && ` • "${r.note}"`}
+              {r.pengecualian && ` • pengecualian: ${r.pengecualian.split(',').map((k) => PENGECUALIAN[k] || k).join(', ')}`}{r.note && ` • "${r.note}"`}
             </div>
           ))}
         </>

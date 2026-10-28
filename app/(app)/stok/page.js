@@ -68,7 +68,7 @@ export default function Stok() {
                 <td>{v.category}</td>
                 <td>{v.product_name}</td>
                 <td>{v.color || '-'}</td>
-                <td className="r">{num(v.stock)} {v.base_unit}</td>
+                <td className="r">{num(v.stock)} {v.base_unit}{v.stok_rusak > 0 && <div className="muted">rusak {num(v.stok_rusak)}</div>}</td>
                 <td>{v.level_green}/{v.level_yellow}/{v.level_red}</td>
                 <td><span className={`badge ${v.status}`}>{LABEL[v.status]}</span></td>
                 <td style={{ whiteSpace: 'nowrap' }}>
