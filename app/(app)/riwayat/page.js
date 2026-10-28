@@ -90,7 +90,30 @@ function SaleDetail({ id, onChanged }) {
 
   if (!sale) return <div className="muted">Memuat…</div>;
 
-  const returnable = sale.items.some((it) => it.qty - it.returned_qty > 1e-9);
+  const returnable = sale.status === 'lunas' && sale.items.some((it) => it.qty - it.returned_qty > 1e-9);
+
+  // Nota draf: lunasi (stok berkurang di sini) atau batalkan dengan alasan.
+  async function aksiDraf(url, body) {
+    setErr('');
+    setBusy(true);
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    setBusy(false);
+    if (!r.ok) return setErr(d.error);
+    load();
+    onChanged();
+  }
+
+  function lunasi() {
+    if (!confirm(`Lunasi nota ${sale.nomor}? Stok barang akan dikurangi.`)) return;
+    aksiDraf(`/api/sales/${sale.id}/lunasi`, {});
+  }
+
+  function batalkan() {
+    const alasan = prompt(`Alasan membatalkan nota ${sale.nomor}:`);
+    if (!alasan || !alasan.trim()) return;
+    aksiDraf(`/api/sales/${sale.id}/batal`, { alasan });
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -116,12 +139,26 @@ function SaleDetail({ id, onChanged }) {
   return (
     <div style={{ padding: '6px 0' }}>
       <div className="muted">
-        Nota #{sale.id} • {sale.created_at} • kasir {sale.kasir}{sale.customer_name && ` • ${sale.customer_name}`} • {sale.channel}
+        Nota {sale.nomor || `#${sale.id}`} • {sale.created_at} • kasir {sale.kasir}{sale.customer_name && ` • ${sale.customer_name}`} • {sale.channel}
       </div>
       <div className="muted">
         Bayar: {sale.paid_cash > 0 && `cash ${rp(sale.paid_cash)} `}{sale.paid_ewallet > 0 && `e-wallet ${rp(sale.paid_ewallet)} `}
         {sale.paid_transfer > 0 && `transfer ${rp(sale.paid_transfer)} `}{sale.hutang > 0 && `hutang ${rp(sale.hutang)}`}
       </div>
+
+      {sale.status === 'draft' && (
+        <div className="alert" style={{ marginTop: 8 }}>
+          Nota draf: stok belum berkurang. Lunasi setelah pembayaran diterima, atau batalkan dengan alasan.
+          {err && <div className="alert err">{err}</div>}
+          <div className="row" style={{ marginTop: 8 }}>
+            <button disabled={busy} onClick={lunasi}>Lunasi nota</button>
+            <button disabled={busy} className="secondary" onClick={batalkan}>Batalkan draf</button>
+          </div>
+        </div>
+      )}
+      {sale.status === 'batal' && (
+        <div className="alert err" style={{ marginTop: 8 }}>Nota dibatalkan: {sale.alasan_batal}</div>
+      )}
 
       <form onSubmit={submit}>
         <table>

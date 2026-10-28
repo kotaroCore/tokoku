@@ -30,6 +30,7 @@ export default function POS() {
   const [payDebt, setPayDebt] = useState('');
 
   const [err, setErr] = useState('');
+  const [info, setInfo] = useState(''); // pesan sukses, mis. draf tersimpan
   const [nota, setNota] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -175,11 +176,14 @@ export default function POS() {
     if (closeList) setSuggest([]);
   }
 
-  async function checkout() {
+  // draft: true = simpan sebagai nota draf (stok belum berkurang, dilunasi lewat Riwayat).
+  async function checkout(draft = false) {
     setErr('');
+    setInfo('');
     setBusy(true);
     const r = await post('/api/sales', {
       channel,
+      draft,
       items: cart.map((c) => ({ variant_id: c.variant.id, unit_id: c.unit.id, qty: c.qty, auto: c.auto, discount_pct: c.disc })),
       customer_name: custName,
       customer_phone: custPhone,
@@ -192,6 +196,13 @@ export default function POS() {
     const d = await r.json();
     setBusy(false);
     if (!r.ok) return setErr(d.error);
+    if (draft) {
+      setInfo(`Draf ${d.nomor} disimpan. Stok belum berkurang; lunasi lewat Riwayat.`);
+      setCart([]);
+      setCash(''); setEwallet(''); setTransfer(''); setPayDebt('');
+      setCustName(''); setCustPhone(''); setCustAddr(''); setKnown(null);
+      return loadProducts();
+    }
     const n = await fetch(`/api/sales?id=${d.saleId}`).then((x) => x.json());
     setNota({ ...n, sisaHutang: d.sisaHutang });
     setCart([]);
@@ -327,8 +338,12 @@ export default function POS() {
             </tbody>
           </table>
           {err && <div className="alert err">{err}</div>}
-          <button disabled={busy || cart.length === 0} onClick={checkout} style={{ marginTop: 10, width: '100%' }}>
+          {info && <div className="alert ok">{info}</div>}
+          <button disabled={busy || cart.length === 0} onClick={() => checkout(false)} style={{ marginTop: 10, width: '100%' }}>
             Selesaikan transaksi
+          </button>
+          <button disabled={busy || cart.length === 0} className="secondary" onClick={() => checkout(true)} style={{ marginTop: 6, width: '100%' }}>
+            Simpan sebagai draf
           </button>
         </div>
       </div>
