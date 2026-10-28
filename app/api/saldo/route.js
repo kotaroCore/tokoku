@@ -6,7 +6,20 @@ import { BadRequest, tambahSaldo } from '@/lib/sales';
 export async function GET(req) {
   const { error } = await requireApi();
   if (error) return error;
-  const customerId = Number(new URL(req.url).searchParams.get('customer_id'));
+  const params = new URL(req.url).searchParams;
+  // Cek sore: saldo titipan yang titipan terakhirnya sudah satu tahun lebih.
+  if (params.get('stale') === '1') {
+    const rows = await query(
+      `SELECT c.id, c.name, c.phone, c.saldo, DATE(MAX(m.created_at)) AS titipan_terakhir
+       FROM customers c JOIN saldo_mutasi m ON m.customer_id = c.id AND m.jumlah > 0
+       WHERE c.saldo > 0
+       GROUP BY c.id, c.name, c.phone, c.saldo
+       HAVING MAX(m.created_at) < NOW() - INTERVAL 365 DAY
+       ORDER BY titipan_terakhir`
+    );
+    return Response.json(rows);
+  }
+  const customerId = Number(params.get('customer_id'));
   const c = await queryOne('SELECT id, name, saldo FROM customers WHERE id = ?', [customerId]);
   if (!c) return Response.json({ error: 'Pembeli tidak ditemukan' }, { status: 404 });
   const mutasi = await query(

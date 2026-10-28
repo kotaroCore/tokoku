@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { num } from '@/lib/format';
+import { num, rp } from '@/lib/format';
 
 const LABEL = { ok: 'Aman', green: 'Mulai menipis', yellow: 'Waspada', red: 'Kritis', none: '-' };
 
@@ -10,10 +10,12 @@ export default function Cek() {
   const [q, setQ] = useState('');
   const [input, setInput] = useState({}); // `${product_id}:${variant_id}` -> teks
   const [msg, setMsg] = useState('');
+  const [titipLama, setTitipLama] = useState([]);
 
   const load = () => {
     fetch('/api/cek-sore').then((r) => r.json()).then(setPending);
     fetch('/api/stock').then((r) => r.json()).then(setStock);
+    fetch('/api/saldo?stale=1').then((r) => r.json()).then(setTitipLama);
   };
   useEffect(() => { load(); }, []);
 
@@ -69,6 +71,23 @@ export default function Cek() {
                 </p>
               </div>
             ))}
+          </>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Saldo titipan lebih dari satu tahun</h2>
+        {!titipLama.length ? <p className="muted">Tidak ada.</p> : (
+          <>
+            <p className="muted">Dihitung dari titipan terakhir. Tanyakan ke pembeli atau kembalikan saldonya.</p>
+            <table>
+              <thead><tr><th>Pembeli</th><th>Kontak</th><th>Titipan terakhir</th><th className="r">Saldo</th></tr></thead>
+              <tbody>
+                {titipLama.map((c) => (
+                  <tr key={c.id}><td>{c.name}</td><td>{c.phone || '-'}</td><td>{c.titipan_terakhir}</td><td className="r">{rp(c.saldo)}</td></tr>
+                ))}
+              </tbody>
+            </table>
           </>
         )}
       </div>
