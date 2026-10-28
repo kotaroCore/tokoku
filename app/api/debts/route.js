@@ -1,10 +1,21 @@
 import { query, queryOne, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
+import { bayarHutang } from '@/lib/sales';
 
+// Pembeli yang masih berhutang, beserta nota yang belum lunas (nomor, tanggal, sisa).
 export async function GET() {
   const { error } = await requireApi();
   if (error) return error;
-  return Response.json(await query('SELECT * FROM customers WHERE total_hutang > 0 ORDER BY total_hutang DESC'));
+  const customers = await query('SELECT * FROM customers WHERE total_hutang > 0 ORDER BY total_hutang DESC');
+  if (!customers.length) return Response.json([]);
+  const notas = await query(
+    `SELECT s.id, s.nomor, s.customer_id, DATE(s.created_at) AS tanggal,
+       s.hutang - s.hutang_terbayar - COALESCE((SELECT SUM(r.hutang_reduced) FROM sale_returns r WHERE r.sale_id = s.id), 0) AS sisa
+     FROM sales s WHERE s.status = 'lunas' AND s.hutang > 0 AND s.customer_id IN (?)
+     HAVING sisa > 0.005 ORDER BY s.created_at, s.id`,
+    [customers.map((c) => c.id)]
+  );
+  return Response.json(customers.map((c) => ({ ...c, notas: notas.filter((n) => n.customer_id === c.id) })));
 }
 
 // Bayar hutang tanpa belanja baru.
@@ -18,18 +29,19 @@ export async function POST(req) {
   if (!(amt > 0) || amt > c.total_hutang) {
     return Response.json({ error: 'Jumlah tidak valid (maks sesuai sisa hutang)' }, { status: 400 });
   }
-  await tx(async (q) => {
-    await q('INSERT INTO debt_payments (customer_id, user_id, amount) VALUES (?, ?, ?)', [c.id, session.uid, amt]);
-    await q('UPDATE customers SET total_hutang = total_hutang - ? WHERE id = ?', [amt, c.id]);
-  });
+  await tx((q) => bayarHutang(q, c.id, amt, session.uid));
   return Response.json({ ok: true });
 }
 
-// Perbarui kontak pembeli (nomor WA / alamat).
+// Perbarui kontak pembeli (nomor WA / alamat), atau tandai pembeli dikenal (tier B).
 export async function PATCH(req) {
   const { error } = await requireApi();
   if (error) return error;
   const b = await req.json();
-  await query('UPDATE customers SET phone = ?, address = ? WHERE id = ?', [b.phone || null, b.address || null, b.id]);
+  if (b.dikenal !== undefined) {
+    await query('UPDATE customers SET dikenal = ? WHERE id = ?', [b.dikenal ? 1 : 0, b.id]);
+  } else {
+    await query('UPDATE customers SET phone = ?, address = ? WHERE id = ?', [b.phone || null, b.address || null, b.id]);
+  }
   return Response.json({ ok: true });
 }

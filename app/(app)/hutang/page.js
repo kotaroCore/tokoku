@@ -35,6 +35,15 @@ export default function Hutang() {
     load();
   }
 
+  async function dikenal(c) {
+    const r = await fetch('/api/debts', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: c.id, dikenal: !c.dikenal }),
+    });
+    setErr(r.ok ? '' : (await r.json()).error);
+    load();
+  }
+
   function wa(c) {
     const tgl = c.last_hutang_date ? new Date(c.last_hutang_date).toLocaleDateString('id-ID') : '-';
     const text =
@@ -60,14 +69,20 @@ export default function Hutang() {
             <tbody>
               {rows.map((c) => (
                 <tr key={c.id}>
-                  <td>{c.name}</td>
+                  <td>
+                    {c.name} {c.dikenal ? <span className="muted">(dikenal)</span> : null}
+                    {c.notas.map((n) => (
+                      <div key={n.id} className="muted">{n.nomor} • {n.tanggal} • sisa {rp(n.sisa)}</div>
+                    ))}
+                  </td>
                   <td>{c.phone || <span className="muted">-</span>}<br /><span className="muted">{c.address || ''}</span></td>
                   <td>{c.last_hutang_date || '-'}</td>
                   <td className="r">{rp(c.total_hutang)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button onClick={() => bayar(c)}>Bayar</button>{' '}
                     <button className="secondary" disabled={!c.phone} onClick={() => wa(c)}>Reminder WA</button>{' '}
-                    <button className="secondary" onClick={() => kontak(c)}>Kontak</button>
+                    <button className="secondary" onClick={() => kontak(c)}>Kontak</button>{' '}
+                    <button className="secondary" onClick={() => dikenal(c)}>{c.dikenal ? 'Batal dikenal' : 'Tandai dikenal'}</button>
                   </td>
                 </tr>
               ))}

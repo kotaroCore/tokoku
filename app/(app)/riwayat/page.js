@@ -83,7 +83,7 @@ function SaleDetail({ id, onChanged }) {
       total += n >= sisa - 1e-9 ? sisa / it.qty * it.subtotal : (it.subtotal * n) / it.qty;
     }
     total = Math.round(total);
-    const sisaHutangNota = sale.hutang - sale.returns.reduce((s, r) => s + r.hutang_reduced, 0);
+    const sisaHutangNota = sale.hutang - sale.hutang_terbayar - sale.returns.reduce((s, r) => s + r.hutang_reduced, 0);
     const hutang = sale.customer_id ? Math.max(0, Math.min(total, sisaHutangNota, sale.customer_hutang)) : 0;
     return { total, hutang, refund: total - hutang };
   }, [sale, qty]);

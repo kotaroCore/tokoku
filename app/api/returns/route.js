@@ -51,7 +51,7 @@ export async function POST(req) {
       let hutangReduced = 0;
       if (sale.customer_id) {
         const [c] = await q('SELECT * FROM customers WHERE id = ? FOR UPDATE', [sale.customer_id]);
-        hutangReduced = Math.max(0, Math.min(total, sale.hutang - reduced, c.total_hutang));
+        hutangReduced = Math.max(0, Math.min(total, sale.hutang - reduced - sale.hutang_terbayar, c.total_hutang));
         if (hutangReduced > 0) await q('UPDATE customers SET total_hutang = total_hutang - ? WHERE id = ?', [hutangReduced, c.id]);
       }
       const refund = total - hutangReduced;
