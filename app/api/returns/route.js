@@ -1,16 +1,17 @@
 import { tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
+import { BadRequest, buatNota, lunasiNota, tambahSaldo } from '@/lib/sales';
 
-class BadRequest extends Error {}
-
-const METHODS = ['cash', 'ewallet', 'transfer'];
+const METHODS = ['cash', 'ewallet', 'transfer', 'saldo'];
 const KONDISI = ['baik', 'cacat'];
 const BATAS_HARI = 7;
 // Aturan retur yang boleh dilewati staf. Pengecualian wajib disertai catatan.
 const PENGECUALIAN = ['lewat_7_hari', 'tanpa_nota_asli', 'paket_dibuka', 'diskon', 'benang_beda_warna', 'meteran'];
 
 // Retur sebagian atau seluruh barang dari satu nota.
-// Nilai retur memotong dulu hutang nota itu (yang belum lunas), sisanya dikembalikan sebagai uang.
+// Tanpa "tukar": nilai retur memotong hutang nota (yang belum lunas), sisanya dikembalikan lewat refund_method.
+// Dengan "tukar": nilai retur dipakai sebagai pembayaran nota baru (barang pengganti); selisihnya dibayar
+// lewat paid_* di body, atau bila nilai retur lebih besar, kelebihannya dikembalikan lewat refund_method.
 // Barang kondisi baik masuk stok jual; barang cacat masuk stok rusak.
 export async function POST(req) {
   const { session, error } = await requireApi();
@@ -23,6 +24,7 @@ export async function POST(req) {
   if ((b.pengecualian || []).some((p) => !PENGECUALIAN.includes(p))) {
     return Response.json({ error: 'Pengecualian tidak dikenal' }, { status: 400 });
   }
+  const tukar = (b.tukar || []).filter((l) => Number(l.qty) > 0);
   const catatan = (b.note || '').trim();
 
   try {
@@ -38,6 +40,9 @@ export async function POST(req) {
       }
       if (pengecualian.length && !catatan) {
         throw new BadRequest('Retur dengan pengecualian wajib diisi catatan');
+      }
+      if (method === 'saldo' && !sale.customer_id) {
+        throw new BadRequest('Nota tanpa pembeli tidak bisa dikembalikan ke saldo titipan');
       }
 
       let total = 0;
@@ -65,20 +70,44 @@ export async function POST(req) {
         done.push({ it, qty, amount, kondisi });
       }
 
-      // Hutang nota yang belum dikurangi lewat retur atau pembayaran sebelumnya.
-      const [{ reduced }] = await q('SELECT COALESCE(SUM(hutang_reduced),0) AS reduced FROM sale_returns WHERE sale_id = ?', [sale.id]);
       let hutangReduced = 0;
-      if (sale.customer_id) {
+      let tukarDipakai = 0;
+      let tukarNota = null;
+      if (tukar.length) {
+        // Barang pengganti: nota baru, nilai retur sebagai pembayaran pertama.
+        const [pemilik] = sale.customer_id ? await q('SELECT name FROM customers WHERE id = ?', [sale.customer_id]) : [];
+        tukarNota = await buatNota(q, {
+          userId: session.uid,
+          shiftId: session.shiftId,
+          items: tukar.map((l) => ({ variant_id: Number(l.variant_id), unit_id: Number(l.unit_id), qty: Number(l.qty), auto: false, discount_pct: 0 })),
+          channel: 'retail',
+          customerName: (b.customer_name || '').trim() || pemilik?.name || '',
+          customerPhone: b.customer_phone,
+          customerAddress: b.customer_address,
+          paidCash: Number(b.paid_cash) || 0,
+          paidEwallet: Number(b.paid_ewallet) || 0,
+          paidTransfer: Number(b.paid_transfer) || 0,
+          paidSaldo: Number(b.paid_saldo) || 0,
+          paidTukar: total,
+          payDebt: 0,
+        });
+        tukarDipakai = Math.min(total, tukarNota.total);
+        await q('UPDATE sales SET paid_tukar = ? WHERE id = ?', [tukarDipakai, tukarNota.saleId]);
+        await lunasiNota(q, tukarNota.saleId, session.uid);
+      } else if (sale.customer_id) {
+        // Hutang nota yang belum dikurangi lewat retur atau pembayaran sebelumnya.
+        const [{ reduced }] = await q('SELECT COALESCE(SUM(hutang_reduced),0) AS reduced FROM sale_returns WHERE sale_id = ?', [sale.id]);
         const [c] = await q('SELECT * FROM customers WHERE id = ? FOR UPDATE', [sale.customer_id]);
         hutangReduced = Math.max(0, Math.min(total, sale.hutang - reduced - sale.hutang_terbayar, c.total_hutang));
         if (hutangReduced > 0) await q('UPDATE customers SET total_hutang = total_hutang - ? WHERE id = ?', [hutangReduced, c.id]);
       }
-      const refund = total - hutangReduced;
+      const refund = total - hutangReduced - tukarDipakai;
 
       const r = await q(
-        `INSERT INTO sale_returns (sale_id, user_id, shift_id, total, hutang_reduced, refund_amount, refund_method, restock, note, pengecualian)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-        [sale.id, session.uid, session.shiftId ?? null, total, hutangReduced, refund, method, catatan || null, pengecualian.join(',') || null]
+        `INSERT INTO sale_returns (sale_id, user_id, shift_id, total, hutang_reduced, refund_amount, refund_method, restock, note, pengecualian, tukar_nota_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+        [sale.id, session.uid, session.shiftId ?? null, total, hutangReduced, refund, method, catatan || null,
+          pengecualian.join(',') || null, tukarNota?.saleId ?? null]
       );
       for (const d of done) {
         await q('INSERT INTO sale_return_items (return_id, sale_item_id, qty, amount, kondisi) VALUES (?, ?, ?, ?, ?)', [r.insertId, d.it.id, d.qty, d.amount, d.kondisi]);
@@ -90,7 +119,13 @@ export async function POST(req) {
           d.it.variant_id, session.uid, back, `Retur nota ${sale.nomor ?? '#' + sale.id}${rusak ? ' (cacat)' : ''}`, rusak ? 'rusak' : 'jual',
         ]);
       }
-      return { id: r.insertId, total, hutangReduced, refund, method };
+      if (refund > 0 && method === 'saldo') {
+        await tambahSaldo(q, sale.customer_id, refund, session.uid, { jenis: 'retur', saleId: sale.id, returnId: r.insertId, note: sale.nomor });
+      }
+      return {
+        id: r.insertId, total, hutangReduced, refund, method,
+        tukarNota: tukarNota ? { saleId: tukarNota.saleId, nomor: tukarNota.nomor, total: tukarNota.total } : null,
+      };
     });
     return Response.json({ ok: true, ...result });
   } catch (e) {

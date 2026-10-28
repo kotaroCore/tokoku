@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { rp, num } from '@/lib/format';
 
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-const METHOD = { cash: 'Cash', ewallet: 'E-wallet', transfer: 'Transfer' };
+const METHOD = { cash: 'Cash', ewallet: 'E-wallet', transfer: 'Transfer', saldo: 'Saldo titipan' };
 const PENGECUALIAN = {
   lewat_7_hari: 'Lewat 7 hari',
   tanpa_nota_asli: 'Nota asli tidak dibawa',
@@ -72,6 +72,23 @@ function SaleDetail({ id, onChanged }) {
   const [qty, setQty] = useState({}); // sale_item_id -> jumlah yang diretur (teks)
   const [kondisi, setKondisi] = useState({}); // sale_item_id -> 'baik' | 'cacat' (default baik)
   const [pengecualian, setPengecualian] = useState([]);
+  // Tukar barang: barang pengganti (variant_id, unit_id, qty) dan pembayaran selisihnya.
+  const [tukarOpen, setTukarOpen] = useState(false);
+  const [tukarLines, setTukarLines] = useState([]);
+  const [bayarTukar, setBayarTukar] = useState({ cash: '', ewallet: '', transfer: '', saldo: '' });
+  const [produk, setProduk] = useState([]);
+  useEffect(() => {
+    if (tukarOpen && produk.length === 0) fetch('/api/products').then((r) => r.json()).then(setProduk);
+  }, [tukarOpen]);
+
+  const tukarItems = tukarLines.filter((l) => l.variant_id && l.unit_id && Number(l.qty) > 0).map((l) => ({ variant_id: Number(l.variant_id), unit_id: Number(l.unit_id), qty: Number(l.qty) }));
+  // Perkiraan nilai barang pengganti (harga satuan hari ini); angka final dihitung server.
+  const tukarTotal = tukarLines.reduce((sum, l) => {
+    const p = produk.find((x) => x.variants.some((v) => v.id === Number(l.variant_id)));
+    const u = p?.units.find((x) => x.id === Number(l.unit_id));
+    return sum + (u ? u.price * (Number(l.qty) || 0) : 0);
+  }, 0);
+  const unitsOf = (variantId) => produk.find((x) => x.variants.some((v) => v.id === Number(variantId)))?.units || [];
   const [method, setMethod] = useState('cash');
   const [note, setNote] = useState('');
   const [err, setErr] = useState('');
@@ -129,11 +146,18 @@ function SaleDetail({ id, onChanged }) {
     setErr('');
     const items = sale.items.filter((it) => Number(qty[it.id]) > 0).map((it) => ({ sale_item_id: it.id, qty: Number(qty[it.id]), kondisi: kondisi[it.id] || 'baik' }));
     if (!items.length) return setErr('Isi jumlah barang yang diretur');
-    if (!confirm(`Proses retur ${rp(preview.total)}? Ini tidak bisa dibatalkan.`)) return;
+    if (tukarLines.length && !tukarItems.length) return setErr('Lengkapi barang pengganti (barang, satuan, jumlah)');
+    const pesan = tukarItems.length ? `Proses tukar barang? Nilai retur ${rp(preview.total)}, barang pengganti sekitar ${rp(tukarTotal)}. Ini tidak bisa dibatalkan.` : `Proses retur ${rp(preview.total)}? Ini tidak bisa dibatalkan.`;
+    if (!confirm(pesan)) return;
     setBusy(true);
     const r = await fetch('/api/returns', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sale_id: sale.id, items, pengecualian, refund_method: method, note }),
+      body: JSON.stringify({
+        sale_id: sale.id, items, pengecualian, refund_method: method, note,
+        tukar: tukarItems,
+        paid_cash: Number(bayarTukar.cash) || 0, paid_ewallet: Number(bayarTukar.ewallet) || 0,
+        paid_transfer: Number(bayarTukar.transfer) || 0, paid_saldo: Number(bayarTukar.saldo) || 0,
+      }),
     });
     const d = await r.json();
     setBusy(false);
@@ -141,6 +165,9 @@ function SaleDetail({ id, onChanged }) {
     setDone(d);
     setQty({});
     setNote('');
+    setTukarLines([]);
+    setBayarTukar({ cash: '', ewallet: '', transfer: '', saldo: '' });
+    setTukarOpen(false);
     load();
     onChanged();
   }
@@ -223,8 +250,37 @@ function SaleDetail({ id, onChanged }) {
                 {preview.refund > 0 && <> • uang kembali <strong>{rp(preview.refund)}</strong> ({METHOD[method]})</>}
               </div>
             )}
+            <div style={{ marginTop: 10 }}>
+              <button type="button" className="secondary" onClick={() => setTukarOpen(!tukarOpen)}>{tukarOpen ? 'Batal tukar barang' : 'Tukar dengan barang lain'}</button>
+            </div>
+            {tukarOpen && (
+              <div className="card" style={{ marginTop: 8 }}>
+                <div className="muted">Barang pengganti (harga hari ini). Nilai retur dipakai sebagai pembayaran pertama; selisih dibayar di bawah, atau kelebihannya dikembalikan lewat "Uang kembali lewat".</div>
+                {tukarLines.map((l, i) => (
+                  <div className="row" key={i} style={{ marginTop: 6 }}>
+                    <select value={l.variant_id} onChange={(e) => setTukarLines(tukarLines.map((x, j) => (j === i ? { ...x, variant_id: e.target.value, unit_id: '' } : x)))}>
+                      <option value="">Pilih barang</option>
+                      {produk.flatMap((p) => p.variants.map((v) => <option key={v.id} value={v.id}>{p.name}{v.color && ` — ${v.color}`}</option>))}
+                    </select>
+                    <select value={l.unit_id} onChange={(e) => setTukarLines(tukarLines.map((x, j) => (j === i ? { ...x, unit_id: e.target.value } : x)))}>
+                      <option value="">Satuan</option>
+                      {unitsOf(l.variant_id).map((u) => <option key={u.id} value={u.id}>{u.name} ({rp(u.price)})</option>)}
+                    </select>
+                    <input inputMode="decimal" style={{ width: 70 }} value={l.qty} onChange={(e) => setTukarLines(tukarLines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} />
+                    <button type="button" className="secondary" onClick={() => setTukarLines(tukarLines.filter((_, j) => j !== i))}>Hapus</button>
+                  </div>
+                ))}
+                <button type="button" className="secondary" style={{ marginTop: 6 }} onClick={() => setTukarLines([...tukarLines, { variant_id: '', unit_id: '', qty: '1' }])}>+ Tambah barang</button>
+                <div className="row" style={{ marginTop: 8 }}>
+                  {[['cash', 'Cash'], ['ewallet', 'E-wallet'], ['transfer', 'Transfer'], ['saldo', 'Saldo titipan']].map(([k, label]) => (
+                    <div className="field" key={k}><label>{label} (selisih)</label><input inputMode="numeric" value={bayarTukar[k]} onChange={(e) => setBayarTukar({ ...bayarTukar, [k]: e.target.value })} /></div>
+                  ))}
+                </div>
+                <div className="muted">Perkiraan barang pengganti {rp(tukarTotal)}</div>
+              </div>
+            )}
             {err && <div className="alert err">{err}</div>}
-            <button disabled={busy || preview.total <= 0} style={{ marginTop: 8 }}>{busy ? 'Memproses…' : 'Proses retur'}</button>
+            <button disabled={busy || preview.total <= 0} style={{ marginTop: 8 }}>{busy ? 'Memproses…' : tukarItems.length ? 'Proses tukar' : 'Proses retur'}</button>
           </>
         )}
       </form>
@@ -233,7 +289,8 @@ function SaleDetail({ id, onChanged }) {
         <div className="alert ok">
           Retur #{done.id} tersimpan: {rp(done.total)}
           {done.hutangReduced > 0 && `, hutang dipotong ${rp(done.hutangReduced)}`}
-          {done.refund > 0 && `, serahkan uang ${rp(done.refund)} (${METHOD[done.method]})`}.
+          {done.refund > 0 && `, kembalikan ${rp(done.refund)} (${METHOD[done.method]})`}.
+          {done.tukarNota && <> Nota pengganti <strong>{done.tukarNota.nomor}</strong> ({rp(done.tukarNota.total)}) lunas.</>}
         </div>
       )}
 

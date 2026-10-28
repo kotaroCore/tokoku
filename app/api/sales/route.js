@@ -21,6 +21,7 @@ export async function POST(req) {
         paidCash: Number(b.paid_cash) || 0,
         paidEwallet: Number(b.paid_ewallet) || 0,
         paidTransfer: Number(b.paid_transfer) || 0,
+        paidSaldo: Number(b.paid_saldo) || 0,
         payDebt: Number(b.pay_old_debt) || 0,
       });
       if (b.draft) return { ...nota, status: 'draft' };

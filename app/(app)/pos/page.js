@@ -27,6 +27,7 @@ export default function POS() {
   const [cash, setCash] = useState('');
   const [ewallet, setEwallet] = useState('');
   const [transfer, setTransfer] = useState('');
+  const [saldoPakai, setSaldoPakai] = useState(''); // dari saldo titipan pembeli
   const [payDebt, setPayDebt] = useState('');
 
   const [err, setErr] = useState('');
@@ -152,7 +153,7 @@ export default function POS() {
     });
     return [...groups.values()];
   })();
-  const paid = (Number(cash) || 0) + (Number(ewallet) || 0) + (Number(transfer) || 0);
+  const paid = (Number(cash) || 0) + (Number(ewallet) || 0) + (Number(transfer) || 0) + (Number(saldoPakai) || 0);
   const oldPay = Number(payDebt) || 0;
   const hutangBaru = Math.max(0, total - Math.max(0, paid - oldPay));
   const kembalian = Math.max(0, paid - oldPay - total);
@@ -166,6 +167,18 @@ export default function POS() {
     setSuggest(rows);
     const exact = rows.find((c) => c.name.toLowerCase() === v.trim().toLowerCase());
     if (exact) chooseCustomer(exact, false);
+  }
+
+  // Titip saldo: pembeli baru dibuat otomatis dari nama di form.
+  async function titipSaldo() {
+    const input = prompt(`Titip saldo untuk ${custName || 'pembeli'}. Jumlah (Rp):`);
+    if (!input) return;
+    setErr('');
+    const r = await post('/api/saldo', { customer_id: known?.id, customer_name: custName, customer_phone: custPhone, customer_address: custAddr, amount: Number(input) });
+    const d = await r.json();
+    if (!r.ok) return setErr(d.error);
+    setKnown({ ...(known || {}), id: d.customer_id, name: custName, saldo: d.saldo });
+    setInfo(`Titipan ${rp(Number(input))} dicatat. Saldo sekarang ${rp(d.saldo)}.`);
   }
 
   function chooseCustomer(c, closeList = true) {
@@ -191,6 +204,7 @@ export default function POS() {
       paid_cash: Number(cash) || 0,
       paid_ewallet: Number(ewallet) || 0,
       paid_transfer: Number(transfer) || 0,
+      paid_saldo: Number(saldoPakai) || 0,
       pay_old_debt: oldPay,
     });
     const d = await r.json();
@@ -199,14 +213,14 @@ export default function POS() {
     if (draft) {
       setInfo(`Draf ${d.nomor} disimpan. Stok belum berkurang; lunasi lewat Riwayat.`);
       setCart([]);
-      setCash(''); setEwallet(''); setTransfer(''); setPayDebt('');
+      setCash(''); setEwallet(''); setTransfer(''); setSaldoPakai(''); setPayDebt('');
       setCustName(''); setCustPhone(''); setCustAddr(''); setKnown(null);
       return loadProducts();
     }
     const n = await fetch(`/api/sales?id=${d.saleId}`).then((x) => x.json());
     setNota({ ...n, sisaHutang: d.sisaHutang });
     setCart([]);
-    setCash(''); setEwallet(''); setTransfer(''); setPayDebt('');
+    setCash(''); setEwallet(''); setTransfer(''); setSaldoPakai(''); setPayDebt('');
     setCustName(''); setCustPhone(''); setCustAddr(''); setKnown(null);
     loadProducts();
   }
@@ -304,6 +318,14 @@ export default function POS() {
               </div>
             )}
           </div>
+          {known && (
+            <div className="alert">
+              Saldo titipan <strong>{rp(known.saldo || 0)}</strong>
+              <div style={{ marginTop: 6 }}>
+                <button className="secondary" onClick={titipSaldo}>Titip saldo</button>
+              </div>
+            </div>
+          )}
           {known && known.total_hutang > 0 && (
             <div className="alert">
               ⚠️ Pembeli ini masih punya hutang <strong>{rp(known.total_hutang)}</strong>
@@ -321,6 +343,9 @@ export default function POS() {
             <div className="field"><label>Cash</label><input inputMode="numeric" value={cash} onChange={(e) => setCash(e.target.value)} /></div>
             <div className="field"><label>E-wallet</label><input inputMode="numeric" value={ewallet} onChange={(e) => setEwallet(e.target.value)} /></div>
             <div className="field"><label>Transfer</label><input inputMode="numeric" value={transfer} onChange={(e) => setTransfer(e.target.value)} /></div>
+            {known && known.saldo > 0 && (
+              <div className="field"><label>Saldo titipan (maks {rp(known.saldo)})</label><input inputMode="numeric" value={saldoPakai} onChange={(e) => setSaldoPakai(e.target.value)} /></div>
+            )}
           </div>
           {known && known.total_hutang > 0 && (
             <div className="field">
