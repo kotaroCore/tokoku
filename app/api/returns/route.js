@@ -86,6 +86,7 @@ export async function POST(req) {
           customerAddress: b.customer_address,
           paidCash: Number(b.paid_cash) || 0,
           paidEwallet: Number(b.paid_ewallet) || 0,
+          paidEwalletKet: (b.paid_ewallet_ket || '').trim(),
           paidTransfer: Number(b.paid_transfer) || 0,
           paidSaldo: Number(b.paid_saldo) || 0,
           paidTukar: total,

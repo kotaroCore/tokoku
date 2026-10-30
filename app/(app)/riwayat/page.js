@@ -75,7 +75,7 @@ function SaleDetail({ id, onChanged }) {
   // Tukar barang: barang pengganti (variant_id, unit_id, qty) dan pembayaran selisihnya.
   const [tukarOpen, setTukarOpen] = useState(false);
   const [tukarLines, setTukarLines] = useState([]);
-  const [bayarTukar, setBayarTukar] = useState({ cash: '', ewallet: '', transfer: '', saldo: '' });
+  const [bayarTukar, setBayarTukar] = useState({ cash: '', ewallet: '', ewalletKet: '', transfer: '', saldo: '' });
   const [produk, setProduk] = useState([]);
   useEffect(() => {
     if (tukarOpen && produk.length === 0) fetch('/api/products').then((r) => r.json()).then(setProduk);
@@ -155,7 +155,7 @@ function SaleDetail({ id, onChanged }) {
       body: JSON.stringify({
         sale_id: sale.id, items, pengecualian, refund_method: method, note,
         tukar: tukarItems,
-        paid_cash: Number(bayarTukar.cash) || 0, paid_ewallet: Number(bayarTukar.ewallet) || 0,
+        paid_cash: Number(bayarTukar.cash) || 0, paid_ewallet: Number(bayarTukar.ewallet) || 0, paid_ewallet_ket: bayarTukar.ewalletKet,
         paid_transfer: Number(bayarTukar.transfer) || 0, paid_saldo: Number(bayarTukar.saldo) || 0,
       }),
     });
@@ -166,7 +166,7 @@ function SaleDetail({ id, onChanged }) {
     setQty({});
     setNote('');
     setTukarLines([]);
-    setBayarTukar({ cash: '', ewallet: '', transfer: '', saldo: '' });
+    setBayarTukar({ cash: '', ewallet: '', ewalletKet: '', transfer: '', saldo: '' });
     setTukarOpen(false);
     load();
     onChanged();
@@ -178,7 +178,7 @@ function SaleDetail({ id, onChanged }) {
         Nota {sale.nomor || `#${sale.id}`} • {sale.created_at} • kasir {sale.kasir}{sale.customer_name && ` • ${sale.customer_name}`} • {sale.channel}
       </div>
       <div className="muted">
-        Bayar: {sale.paid_cash > 0 && `cash ${rp(sale.paid_cash)} `}{sale.paid_ewallet > 0 && `e-wallet ${rp(sale.paid_ewallet)} `}
+        Bayar: {sale.paid_cash > 0 && `cash ${rp(sale.paid_cash)} `}{sale.paid_ewallet > 0 && `e-wallet${sale.ewallet_ket ? ` (${sale.ewallet_ket})` : ''} ${rp(sale.paid_ewallet)} `}
         {sale.paid_transfer > 0 && `transfer ${rp(sale.paid_transfer)} `}{sale.hutang > 0 && `hutang ${rp(sale.hutang)}`}
       </div>
 
@@ -275,6 +275,10 @@ function SaleDetail({ id, onChanged }) {
                   {[['cash', 'Cash'], ['ewallet', 'E-wallet'], ['transfer', 'Transfer'], ['saldo', 'Saldo titipan']].map(([k, label]) => (
                     <div className="field" key={k}><label>{label} (selisih)</label><input inputMode="numeric" value={bayarTukar[k]} onChange={(e) => setBayarTukar({ ...bayarTukar, [k]: e.target.value })} /></div>
                   ))}
+                  {Number(bayarTukar.ewallet) > 0 && (
+                    <div className="field"><label>Keterangan e-wallet</label><input list="ewallet-ket" value={bayarTukar.ewalletKet} onChange={(e) => setBayarTukar({ ...bayarTukar, ewalletKet: e.target.value })} placeholder="mis. QRIS" /></div>
+                  )}
+                  <datalist id="ewallet-ket"><option value="QRIS" /><option value="GoPay" /><option value="ShopeePay" /></datalist>
                 </div>
                 <div className="muted">Perkiraan barang pengganti {rp(tukarTotal)}</div>
               </div>

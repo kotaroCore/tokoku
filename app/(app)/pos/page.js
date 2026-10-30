@@ -26,6 +26,7 @@ export default function POS() {
   const [known, setKnown] = useState(null);
   const [cash, setCash] = useState('');
   const [ewallet, setEwallet] = useState('');
+  const [ewalletKet, setEwalletKet] = useState(''); // keterangan e-wallet: QRIS, GoPay, ShopeePay, atau lainnya
   const [transfer, setTransfer] = useState('');
   const [saldoPakai, setSaldoPakai] = useState(''); // dari saldo titipan pembeli
   const [payDebt, setPayDebt] = useState('');
@@ -203,6 +204,7 @@ export default function POS() {
       customer_address: custAddr,
       paid_cash: Number(cash) || 0,
       paid_ewallet: Number(ewallet) || 0,
+      paid_ewallet_ket: ewalletKet,
       paid_transfer: Number(transfer) || 0,
       paid_saldo: Number(saldoPakai) || 0,
       pay_old_debt: oldPay,
@@ -213,14 +215,14 @@ export default function POS() {
     if (draft) {
       setInfo(`Draf ${d.nomor} disimpan. Stok belum berkurang; lunasi lewat Riwayat.`);
       setCart([]);
-      setCash(''); setEwallet(''); setTransfer(''); setSaldoPakai(''); setPayDebt('');
+      setCash(''); setEwallet(''); setEwalletKet(''); setTransfer(''); setSaldoPakai(''); setPayDebt('');
       setCustName(''); setCustPhone(''); setCustAddr(''); setKnown(null);
       return loadProducts();
     }
     const n = await fetch(`/api/sales?id=${d.saleId}`).then((x) => x.json());
     setNota({ ...n, sisaHutang: d.sisaHutang });
     setCart([]);
-    setCash(''); setEwallet(''); setTransfer(''); setSaldoPakai(''); setPayDebt('');
+    setCash(''); setEwallet(''); setEwalletKet(''); setTransfer(''); setSaldoPakai(''); setPayDebt('');
     setCustName(''); setCustPhone(''); setCustAddr(''); setKnown(null);
     loadProducts();
   }
@@ -341,7 +343,11 @@ export default function POS() {
           </div>
           <div className="row">
             <div className="field"><label>Cash</label><input inputMode="numeric" value={cash} onChange={(e) => setCash(e.target.value)} /></div>
-            <div className="field"><label>E-wallet</label><input inputMode="numeric" value={ewallet} onChange={(e) => setEwallet(e.target.value)} /></div>
+            <div className="field"><label>E-wallet (QRIS, GoPay, ShopeePay)</label><input inputMode="numeric" value={ewallet} onChange={(e) => setEwallet(e.target.value)} /></div>
+            {Number(ewallet) > 0 && (
+              <div className="field"><label>Keterangan e-wallet</label><input list="ewallet-ket" value={ewalletKet} onChange={(e) => setEwalletKet(e.target.value)} placeholder="mis. QRIS" />
+                <datalist id="ewallet-ket"><option value="QRIS" /><option value="GoPay" /><option value="ShopeePay" /></datalist></div>
+            )}
             <div className="field"><label>Transfer</label><input inputMode="numeric" value={transfer} onChange={(e) => setTransfer(e.target.value)} /></div>
             {known && known.saldo > 0 && (
               <div className="field"><label>Saldo titipan (maks {rp(known.saldo)})</label><input inputMode="numeric" value={saldoPakai} onChange={(e) => setSaldoPakai(e.target.value)} /></div>
@@ -409,7 +415,7 @@ function Nota({ nota, onClose }) {
         <hr style={{ borderStyle: 'dashed' }} />
         <div style={line}><strong>Total</strong><strong>{rp(nota.total)}</strong></div>
         {nota.paid_cash > 0 && <div style={line}><span>Bayar (Cash)</span><span>{rp(nota.paid_cash)}</span></div>}
-        {nota.paid_ewallet > 0 && <div style={line}><span>Bayar (E-wallet)</span><span>{rp(nota.paid_ewallet)}</span></div>}
+        {nota.paid_ewallet > 0 && <div style={line}><span>Bayar (E-wallet{nota.ewallet_ket ? `, ${nota.ewallet_ket}` : ''})</span><span>{rp(nota.paid_ewallet)}</span></div>}
         {nota.paid_transfer > 0 && <div style={line}><span>Bayar (Transfer)</span><span>{rp(nota.paid_transfer)}</span></div>}
         {bayar > nota.total && <div style={line}><span>Kembali</span><span>{rp(bayar - nota.total)}</span></div>}
         {nota.sisaHutang > 0 && (
