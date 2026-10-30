@@ -42,10 +42,29 @@ export default function Pembelian() {
   const [photoUrl, setPhotoUrl] = useState('');
 
   const [pending, setPending] = useState([]);
+  const [alerts, setAlerts] = useState([]); // perubahan harga beli yang belum ditutup owner
+  const [isOwner, setIsOwner] = useState(false);
+  const [status, setStatus] = useState('diterima');
+  const [noSupplier, setNoSupplier] = useState('');
+  const [caraKirim, setCaraKirim] = useState('');
   const loadPending = () => fetch('/api/purchases?pending=1').then((r) => r.json()).then(setPending);
+  const loadAlerts = () => fetch('/api/harga-alert').then((r) => r.json()).then(setAlerts);
+  async function tutupAlert(id, aksi) {
+    const r = await fetch('/api/harga-alert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, aksi }) });
+    if (!r.ok) return setErr((await r.json()).error);
+    loadAlerts();
+  }
+  async function ubahStatus(id, status) {
+    if (status === 'hilang' && !confirm('Tandai barang ini hilang? Stok tidak akan bertambah.')) return;
+    const r = await fetch(`/api/purchases/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    const d = await r.json();
+    if (!r.ok) return setErr(d.error);
+    reloadAll();
+    loadAlerts();
+  }
   const reloadAll = () => {
     fetch('/api/products').then((x) => x.json()).then(setProducts);
-    loadPending(); loadList();
+    loadPending(); loadList(); loadAlerts();
   };
   const loadList = () => fetch(`/api/purchases?date=${date}`).then((r) => r.json()).then(setList);
   useEffect(() => {
@@ -54,7 +73,7 @@ export default function Pembelian() {
     fetch('/api/unit-presets').then((r) => r.json()).then(setPresets);
   }, []);
   useEffect(() => { loadList(); }, [date]);
-  useEffect(() => { loadPending(); }, []);
+  useEffect(() => { loadPending(); loadAlerts(); fetch('/api/me').then((r) => r.json()).then((me) => setIsOwner(me.role === 'owner')); }, []);
 
   const matches = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -111,6 +130,7 @@ export default function Pembelian() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         supplier_id: supplierId || null, pay_method: method, note,
+        status, nomor_nota_supplier: noSupplier, cara_kirim: caraKirim,
         items: cart.map((l) => ({ product_id: l.p.id, unit_name: l.unit, factor: factorOf(l), qty: Number(l.qty), unit_cost: Number(l.cost) })),
       }),
     });
@@ -123,7 +143,7 @@ export default function Pembelian() {
       if (!up.ok) photoMsg = ' Foto nota GAGAL diunggah — pembelian tetap tersimpan.';
     }
     setMsg(`Pembelian #${d.id} tersimpan (${rp(d.total)}). Stok belum bertambah: masukkan ke rak per warna di bagian "Menunggu masuk rak".${photoMsg}`);
-    setCart([]); setNote(''); clearPhoto();
+    setCart([]); setNote(''); setNoSupplier(''); setCaraKirim(''); setStatus('diterima'); clearPhoto();
     loadPending();
     if (date === today()) loadList(); else setDate(today());
   }
@@ -197,6 +217,18 @@ export default function Pembelian() {
             </select>
           </div>
           <div className="field"><label>Catatan / no. nota supplier</label><input value={note} onChange={(e) => setNote(e.target.value)} /></div>
+          <div className="row">
+            <div className="field"><label>No. nota supplier</label><input value={noSupplier} onChange={(e) => setNoSupplier(e.target.value)} /></div>
+            <div className="field"><label>Cara kirim</label><input list="cara-kirim" value={caraKirim} onChange={(e) => setCaraKirim(e.target.value)} placeholder="mis. diantar, ekspedisi" />
+              <datalist id="cara-kirim"><option value="Diantar supplier" /><option value="Ambil sendiri" /><option value="Ekspedisi" /></datalist>
+            </div>
+            <div className="field"><label>Status barang</label>
+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="diterima">Sudah diterima</option>
+                <option value="dalam_perjalanan">Dalam perjalanan</option>
+              </select>
+            </div>
+          </div>
         </div>
         <div className="field">
           <label>Foto nota / bukti pembelian (boleh kosong)</label>
@@ -213,6 +245,23 @@ export default function Pembelian() {
         {msg && <div className="alert ok">{msg}</div>}
         <button disabled={busy || !cart.length}>{busy ? 'Menyimpan…' : 'Simpan pembelian (langsung lunas)'}</button>
       </form>
+
+      {alerts.length > 0 && (
+        <div className="card">
+          <h2>Perubahan harga beli</h2>
+          {alerts.map((h) => (
+            <div key={h.id} style={{ marginBottom: 8 }}>
+              <strong>{h.product_name}</strong>: {rp(h.lama)} → {rp(h.baru)} per {h.base_unit} <span className="muted">(dicatat {h.dibuat_oleh_nama})</span>
+              {isOwner ? (
+                <>
+                  {' '}<a href={`/produk/${h.product_id}`} onClick={() => tutupAlert(h.id, 'ubah')}>Ubah harga sekarang</a>{' '}
+                  <button className="secondary" onClick={() => tutupAlert(h.id, 'tidak_perlu')}>Tidak perlu</button>
+                </>
+              ) : <span className="muted"> Menunggu owner.</span>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="card">
         <h2>Menunggu masuk rak</h2>
@@ -235,7 +284,11 @@ export default function Pembelian() {
         {list.map((p) => (
           <div key={p.id} style={{ marginBottom: 12 }}>
             <strong>#{p.id}</strong> • {p.created_at.slice(11, 16)} • {p.supplier_name || 'tanpa supplier'} • {METHOD[p.pay_method]} • <strong>{rp(p.total)}</strong>
-            <span className="muted"> • {p.kasir}{p.note && ` • ${p.note}`}</span>
+            <span className="muted"> • {p.kasir}{p.note && ` • ${p.note}`}{p.nomor_nota_supplier && ` • nota supplier ${p.nomor_nota_supplier}`}{p.cara_kirim && ` • ${p.cara_kirim}`}</span>
+            {p.status !== 'diterima' && <> • <strong>{p.status === 'hilang' ? 'HILANG' : 'Dalam perjalanan'}</strong></>}
+            {p.status === 'dalam_perjalanan' && (
+              <> <button onClick={() => ubahStatus(p.id, 'diterima')}>Sudah diterima</button>{' '}<button className="secondary" onClick={() => ubahStatus(p.id, 'hilang')}>Hilang</button></>
+            )}
             {p.receipt_file && (
               <> • <a href={`/api/purchases/${p.id}/receipt`} target="_blank" rel="noreferrer">📎 Lihat foto nota</a></>
             )}

@@ -1,5 +1,6 @@
 import { query, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
+import { terimaBarang } from '@/lib/purchases';
 
 class BadRequest extends Error {}
 
@@ -17,7 +18,7 @@ export async function GET(req) {
     `SELECT p.*, s.name AS supplier_name, u.name AS kasir
      FROM purchases p JOIN users u ON u.id = p.user_id LEFT JOIN suppliers s ON s.id = p.supplier_id
      WHERE ${pending
-       ? 'EXISTS (SELECT 1 FROM purchase_items i WHERE i.purchase_id = p.id AND i.shelved < i.qty * i.factor - 0.000001)'
+       ? 'p.status = \x27diterima\x27 AND EXISTS (SELECT 1 FROM purchase_items i WHERE i.purchase_id = p.id AND i.shelved < i.qty * i.factor - 0.000001)'
        : 'DATE(p.created_at) = ?'}
      ORDER BY p.id DESC`,
     pending ? [] : [date]
@@ -29,8 +30,8 @@ export async function GET(req) {
 }
 
 // Catat nota dari supplier (per produk, tanpa warna). Pembelian dianggap langsung lunas.
+// Status awal: diterima (default) atau dalam perjalanan. Saat diterima, harga beli terakhir produk diperbarui.
 // Stok baru bertambah saat barang dimasukkan rak per warna (/api/purchases/[id]/shelve).
-// Harga beli produk (modal) tidak diubah otomatis.
 export async function POST(req) {
   const { session, error } = await requireApi();
   if (error) return error;
@@ -38,6 +39,7 @@ export async function POST(req) {
   const lines = b.items || [];
   if (!lines.length) return Response.json({ error: 'Belum ada barang' }, { status: 400 });
   const method = METHODS.includes(b.pay_method) ? b.pay_method : 'cash';
+  const status = b.status === 'dalam_perjalanan' ? 'dalam_perjalanan' : 'diterima';
 
   try {
     const result = await tx(async (q) => {
@@ -64,8 +66,9 @@ export async function POST(req) {
       }
 
       const r = await q(
-        'INSERT INTO purchases (supplier_id, user_id, shift_id, total, pay_method, note) VALUES (?, ?, ?, ?, ?, ?)',
-        [supplierId, session.uid, session.shiftId ?? null, total, method, String(b.note || '').trim() || null]
+        'INSERT INTO purchases (supplier_id, user_id, shift_id, total, pay_method, note, status, nomor_nota_supplier, cara_kirim) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [supplierId, session.uid, session.shiftId ?? null, total, method, String(b.note || '').trim() || null, status,
+          String(b.nomor_nota_supplier || '').trim() || null, String(b.cara_kirim || '').trim() || null]
       );
       for (const d of done) {
         await q(
@@ -74,7 +77,8 @@ export async function POST(req) {
           [r.insertId, d.p.id, d.p.name, d.u.name, d.qty, d.u.factor, d.cost, d.subtotal]
         );
       }
-      return { id: r.insertId, total };
+      if (status === 'diterima') await terimaBarang(q, r.insertId, session.uid, session.role === 'owner');
+      return { id: r.insertId, total, status };
     });
     return Response.json({ ok: true, ...result });
   } catch (e) {

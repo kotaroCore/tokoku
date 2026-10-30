@@ -20,6 +20,8 @@ export async function POST(req, { params }) {
     const result = await tx(async (q) => {
       const [item] = await q('SELECT * FROM purchase_items WHERE id = ? AND purchase_id = ? FOR UPDATE', [b.item_id, id]);
       if (!item) throw new BadRequest('Barang di nota tidak ditemukan');
+      const [pembelian] = await q('SELECT status FROM purchases WHERE id = ?', [id]);
+      if (pembelian.status !== 'diterima') throw new BadRequest('Barang belum diterima. Tandai diterima dulu sebelum masuk rak.');
       if (!item.product_id) throw new BadRequest('Barang ini sudah punya warna dari catatan lama');
 
       let add = 0;
