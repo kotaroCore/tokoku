@@ -1,6 +1,7 @@
 import { tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { BadRequest, buatNota, lunasiNota, tambahSaldo } from '@/lib/sales';
+import { catatDompet } from '@/lib/dompet';
 
 const METHODS = ['cash', 'ewallet', 'transfer', 'saldo'];
 const KONDISI = ['baik', 'cacat'];
@@ -120,6 +121,9 @@ export async function POST(req) {
         await q('INSERT INTO stock_adjustments (variant_id, user_id, delta, note, kolom) VALUES (?, ?, ?, ?, ?)', [
           d.it.variant_id, session.uid, back, `Retur nota ${sale.nomor ?? '#' + sale.id}${rusak ? ' (cacat)' : ''}`, rusak ? 'rusak' : 'jual',
         ]);
+      }
+      if (refund > 0 && method === 'cash') {
+        await catatDompet(q, { dompet: 'laci', jumlah: -refund, jenis: 'retur', keterangan: sale.nomor, userId: session.uid, saleId: sale.id });
       }
       if (refund > 0 && method === 'saldo') {
         await tambahSaldo(q, sale.customer_id, refund, session.uid, { jenis: 'retur', saleId: sale.id, returnId: r.insertId, note: sale.nomor });

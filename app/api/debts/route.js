@@ -1,6 +1,7 @@
 import { query, queryOne, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { bayarHutang } from '@/lib/sales';
+import { catatDompet } from '@/lib/dompet';
 
 // Pembeli yang masih berhutang, beserta nota yang belum lunas (nomor, tanggal, sisa).
 export async function GET() {
@@ -22,14 +23,20 @@ export async function GET() {
 export async function POST(req) {
   const { session, error } = await requireApi();
   if (error) return error;
-  const { customer_id, amount } = await req.json();
+  const { customer_id, amount, metode } = await req.json();
   const amt = Number(amount);
   const c = await queryOne('SELECT * FROM customers WHERE id = ?', [customer_id]);
   if (!c) return Response.json({ error: 'Pembeli tidak ditemukan' }, { status: 404 });
   if (!(amt > 0) || amt > c.total_hutang) {
     return Response.json({ error: 'Jumlah tidak valid (maks sesuai sisa hutang)' }, { status: 400 });
   }
-  await tx((q) => bayarHutang(q, c.id, amt, session.uid));
+  await tx(async (q) => {
+    await bayarHutang(q, c.id, amt, session.uid);
+    // Hanya pembayaran tunai yang masuk laci; e-wallet dan transfer tidak.
+    if (!metode || metode === 'cash') {
+      await catatDompet(q, { dompet: 'laci', jumlah: amt, jenis: 'bayar_hutang', keterangan: c.name, userId: session.uid });
+    }
+  });
   return Response.json({ ok: true });
 }
 

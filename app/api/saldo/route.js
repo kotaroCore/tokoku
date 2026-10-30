@@ -1,6 +1,7 @@
 import { query, queryOne, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { BadRequest, tambahSaldo } from '@/lib/sales';
+import { catatDompet } from '@/lib/dompet';
 
 // Saldo titipan satu pembeli beserta riwayat perubahannya.
 export async function GET(req) {
@@ -54,6 +55,10 @@ export async function POST(req) {
         }
       }
       await tambahSaldo(q, c.id, amount, session.uid, { jenis: 'titip', note: (b.note || '').trim() || null });
+      // Titipan tunai masuk laci; titipan lewat e-wallet / transfer tidak.
+      if (!b.metode || b.metode === 'cash') {
+        await catatDompet(q, { dompet: 'laci', jumlah: amount, jenis: 'titip', keterangan: c.name, userId: session.uid });
+      }
       const [{ saldo }] = await q('SELECT saldo FROM customers WHERE id = ?', [c.id]);
       return { saldo, customer_id: c.id };
     });

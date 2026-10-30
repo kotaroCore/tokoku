@@ -1,6 +1,7 @@
 import { query, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { terimaBarang } from '@/lib/purchases';
+import { catatDompet } from '@/lib/dompet';
 
 class BadRequest extends Error {}
 
@@ -76,6 +77,10 @@ export async function POST(req) {
            VALUES (?, ?, NULL, ?, '', ?, ?, ?, ?, ?)`,
           [r.insertId, d.p.id, d.p.name, d.u.name, d.qty, d.u.factor, d.cost, d.subtotal]
         );
+      }
+      // Pembelian tunai dibayar dari dompet kulakan.
+      if (method === 'cash') {
+        await catatDompet(q, { dompet: 'kulakan', jumlah: -total, jenis: 'pembelian', keterangan: `Pembelian #${r.insertId}`, userId: session.uid, purchaseId: r.insertId });
       }
       if (status === 'diterima') await terimaBarang(q, r.insertId, session.uid, session.role === 'owner');
       return { id: r.insertId, total, status };
