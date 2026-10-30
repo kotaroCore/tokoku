@@ -26,6 +26,7 @@ function buatCsv(d) {
   tambah('E-wallet', d.ewallet);
   tambah('Transfer', d.transfer);
   tambah('Hutang baru', d.hutang_baru);
+  tambah('Total pembulatan', Number(d.pembulatan));
   tambah('Hutang dibayar', d.hutangDibayar);
   tambah('Retur', d.retur.total);
   tambah('Omset bersih', Number(d.omset) - Number(d.retur.total));
@@ -90,6 +91,7 @@ export default function Laporan() {
             <div className="card stat"><div className="v">{rp(d.ewallet)}</div><div className="l">E-wallet masuk</div></div>
             <div className="card stat"><div className="v">{rp(d.transfer)}</div><div className="l">Transfer masuk</div></div>
             <div className="card stat"><div className="v">{rp(d.hutang_baru)}</div><div className="l">Hutang baru</div></div>
+            <div className="card stat"><div className="v">{rp(d.pembulatan)}</div><div className="l">Total pembulatan</div></div>
             <div className="card stat"><div className="v">{rp(d.hutangDibayar)}</div><div className="l">Hutang dibayar</div></div>
             <div className="card stat"><div className="v">{rp(d.retur.total)}</div><div className="l">Retur ({d.retur.jumlah}x)</div></div>
             <div className="card stat"><div className="v">{rp(d.omset - d.retur.total)}</div><div className="l">Omset bersih</div></div>

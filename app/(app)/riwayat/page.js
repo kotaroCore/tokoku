@@ -51,7 +51,7 @@ function FragmentRow({ s, open, onToggle, onChanged }) {
   return (
     <>
       <tr onClick={onToggle} style={{ cursor: 'pointer' }}>
-        <td>{s.nomor || `#${s.id}`} {s.status !== 'lunas' && <span className="muted">({s.status === 'draft' ? 'draf' : 'batal'})</span>}</td>
+        <td>{s.nomor || `#${s.id}`} {s.status !== 'lunas' && <span className="muted">({s.status === 'batal' ? 'batal' : s.menunggu_sejak ? 'menunggu konfirmasi' : 'draf'})</span>}</td>
         <td>{s.created_at.slice(11, 16)}</td>
         <td>{s.customer_name || '-'}</td>
         <td>{s.kasir}</td>
@@ -131,7 +131,10 @@ function SaleDetail({ id, onChanged }) {
   }
 
   function lunasi() {
-    if (!confirm(`Lunasi nota ${sale.nomor}? Stok barang akan dikurangi.`)) return;
+    const pesan = sale.menunggu_sejak
+      ? `Dana ${sale.paid_transfer > 0 && sale.paid_ewallet <= 0 ? 'transfer' : 'e-wallet'} untuk nota ${sale.nomor} sudah masuk? Nota akan lunas dan stok berkurang.`
+      : `Lunasi nota ${sale.nomor}? Stok barang akan dikurangi.`;
+    if (!confirm(pesan)) return;
     aksiDraf(`/api/sales/${sale.id}/lunasi`, {});
   }
 
@@ -184,10 +187,12 @@ function SaleDetail({ id, onChanged }) {
 
       {sale.status === 'draft' && (
         <div className="alert" style={{ marginTop: 8 }}>
-          Nota draf: stok belum berkurang. Lunasi setelah pembayaran diterima, atau batalkan dengan alasan.
+          {sale.menunggu_sejak
+            ? <>Menunggu konfirmasi dana e-wallet / transfer. Barang jangan diserahkan sebelum dana masuk. {sale.menit_menunggu >= 60 && <strong>⚠️ Sudah {sale.menit_menunggu} menit menunggu; cek mutasi.</strong>}</>
+            : 'Nota draf: stok belum berkurang. Lunasi setelah pembayaran diterima, atau batalkan dengan alasan.'}
           {err && <div className="alert err">{err}</div>}
           <div className="row" style={{ marginTop: 8 }}>
-            <button disabled={busy} onClick={lunasi}>Lunasi nota</button>
+            <button disabled={busy} onClick={lunasi}>{sale.menunggu_sejak ? 'Dana sudah masuk, lunasi' : 'Lunasi nota'}</button>
             <button disabled={busy} className="secondary" onClick={batalkan}>Batalkan draf</button>
           </div>
         </div>

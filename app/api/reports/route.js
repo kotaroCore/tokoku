@@ -20,7 +20,7 @@ export async function GET(req) {
   const totals = await queryOne(
     `SELECT COUNT(*) AS jumlah_nota, COALESCE(SUM(total),0) AS omset, COALESCE(SUM(paid_cash),0) AS cash,
             COALESCE(SUM(paid_ewallet),0) AS ewallet, COALESCE(SUM(paid_transfer),0) AS transfer,
-            COALESCE(SUM(hutang),0) AS hutang_baru
+            COALESCE(SUM(hutang),0) AS hutang_baru, COALESCE(SUM(pembulatan),0) AS pembulatan
      FROM sales WHERE status = 'lunas' AND DATE(created_at) BETWEEN ? AND ?`,
     rentang
   );

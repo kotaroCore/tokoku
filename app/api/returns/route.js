@@ -94,7 +94,8 @@ export async function POST(req) {
         });
         tukarDipakai = Math.min(total, tukarNota.total);
         await q('UPDATE sales SET paid_tukar = ? WHERE id = ?', [tukarDipakai, tukarNota.saleId]);
-        await lunasiNota(q, tukarNota.saleId, session.uid);
+        // Selisih e-wallet / transfer menunggu konfirmasi: nota pengganti dilunasi dari Riwayat nanti.
+        if (!tukarNota.menunggu) await lunasiNota(q, tukarNota.saleId, session.uid);
       } else if (sale.customer_id) {
         // Hutang nota yang belum dikurangi lewat retur atau pembayaran sebelumnya.
         const [{ reduced }] = await q('SELECT COALESCE(SUM(hutang_reduced),0) AS reduced FROM sale_returns WHERE sale_id = ?', [sale.id]);
@@ -125,7 +126,7 @@ export async function POST(req) {
       }
       return {
         id: r.insertId, total, hutangReduced, refund, method,
-        tukarNota: tukarNota ? { saleId: tukarNota.saleId, nomor: tukarNota.nomor, total: tukarNota.total } : null,
+        tukarNota: tukarNota ? { saleId: tukarNota.saleId, nomor: tukarNota.nomor, total: tukarNota.total, menunggu: tukarNota.menunggu } : null,
       };
     });
     return Response.json({ ok: true, ...result });

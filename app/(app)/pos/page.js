@@ -26,7 +26,8 @@ export default function POS() {
   const [known, setKnown] = useState(null);
   const [cash, setCash] = useState('');
   const [ewallet, setEwallet] = useState('');
-  const [ewalletKet, setEwalletKet] = useState(''); // keterangan e-wallet: QRIS, GoPay, ShopeePay, atau lainnya
+  const [ewalletKet, setEwalletKet] = useState('');
+  const [totalBulat, setTotalBulat] = useState(''); // total yang dibulatkan staf (opsional) // keterangan e-wallet: QRIS, GoPay, ShopeePay, atau lainnya
   const [transfer, setTransfer] = useState('');
   const [saldoPakai, setSaldoPakai] = useState(''); // dari saldo titipan pembeli
   const [payDebt, setPayDebt] = useState('');
@@ -156,8 +157,11 @@ export default function POS() {
   })();
   const paid = (Number(cash) || 0) + (Number(ewallet) || 0) + (Number(transfer) || 0) + (Number(saldoPakai) || 0);
   const oldPay = Number(payDebt) || 0;
-  const hutangBaru = Math.max(0, total - Math.max(0, paid - oldPay));
-  const kembalian = Math.max(0, paid - oldPay - total);
+  // Pembulatan manual: selisih antara total yang dibulatkan staf dan total barang. Sistem hanya mencatat selisihnya.
+  const pembulatan = totalBulat === '' ? 0 : Math.round(Number(totalBulat) || 0) - total;
+  const tagihan = total + pembulatan;
+  const hutangBaru = Math.max(0, tagihan - Math.max(0, paid - oldPay));
+  const kembalian = Math.max(0, paid - oldPay - tagihan);
 
   async function onName(v) {
     setCustName(v);
@@ -205,6 +209,7 @@ export default function POS() {
       paid_cash: Number(cash) || 0,
       paid_ewallet: Number(ewallet) || 0,
       paid_ewallet_ket: ewalletKet,
+      pembulatan,
       paid_transfer: Number(transfer) || 0,
       paid_saldo: Number(saldoPakai) || 0,
       pay_old_debt: oldPay,
@@ -212,17 +217,19 @@ export default function POS() {
     const d = await r.json();
     setBusy(false);
     if (!r.ok) return setErr(d.error);
-    if (draft) {
-      setInfo(`Draf ${d.nomor} disimpan. Stok belum berkurang; lunasi lewat Riwayat.`);
+    if (draft || d.status === 'draft') {
+      setInfo(d.menunggu
+        ? `Nota ${d.nomor} disimpan. Menunggu konfirmasi dana e-wallet / transfer; konfirmasi lewat Riwayat sebelum barang diserahkan.`
+        : `Draf ${d.nomor} disimpan. Stok belum berkurang; lunasi lewat Riwayat.`);
       setCart([]);
-      setCash(''); setEwallet(''); setEwalletKet(''); setTransfer(''); setSaldoPakai(''); setPayDebt('');
+      setCash(''); setEwallet(''); setEwalletKet(''); setTransfer(''); setSaldoPakai(''); setPayDebt(''); setTotalBulat('');
       setCustName(''); setCustPhone(''); setCustAddr(''); setKnown(null);
       return loadProducts();
     }
     const n = await fetch(`/api/sales?id=${d.saleId}`).then((x) => x.json());
     setNota({ ...n, sisaHutang: d.sisaHutang });
     setCart([]);
-    setCash(''); setEwallet(''); setEwalletKet(''); setTransfer(''); setSaldoPakai(''); setPayDebt('');
+    setCash(''); setEwallet(''); setEwalletKet(''); setTransfer(''); setSaldoPakai(''); setPayDebt(''); setTotalBulat('');
     setCustName(''); setCustPhone(''); setCustAddr(''); setKnown(null);
     loadProducts();
   }
@@ -359,9 +366,14 @@ export default function POS() {
               <input inputMode="numeric" value={payDebt} onChange={(e) => setPayDebt(e.target.value)} />
             </div>
           )}
+          <div className="field">
+            <label>Total dibulatkan staf (opsional, kosongkan bila tidak)</label>
+            <input inputMode="numeric" value={totalBulat} onChange={(e) => setTotalBulat(e.target.value)} />
+          </div>
           <table>
             <tbody>
               <tr><td>Total belanja</td><td className="r">{rp(total)}</td></tr>
+              {pembulatan !== 0 && <tr><td>Pembulatan</td><td className="r">{pembulatan > 0 ? '+' : ''}{rp(pembulatan)}</td></tr>}
               <tr><td>Uang masuk</td><td className="r">{rp(paid)}</td></tr>
               {oldPay > 0 && <tr><td>Untuk hutang lama</td><td className="r">{rp(oldPay)}</td></tr>}
               <tr><td>Hutang baru</td><td className="r"><strong>{rp(hutangBaru)}</strong></td></tr>

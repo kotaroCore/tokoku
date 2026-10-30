@@ -24,8 +24,10 @@ export async function POST(req) {
         paidTransfer: Number(b.paid_transfer) || 0,
         paidSaldo: Number(b.paid_saldo) || 0,
         payDebt: Number(b.pay_old_debt) || 0,
+        pembulatan: Number(b.pembulatan) || 0,
       });
-      if (b.draft) return { ...nota, status: 'draft' };
+      // Draf, atau pembayaran e-wallet / transfer yang belum dikonfirmasi: stok dan hutang menunggu dilunasi.
+      if (b.draft || nota.menunggu) return { ...nota, status: 'draft' };
       const lunas = await lunasiNota(q, nota.saleId, session.uid);
       return { ...nota, status: 'lunas', sisaHutang: lunas.sisaHutang };
     });
@@ -43,11 +45,22 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const id = params.get('id');
 
+  // Pembayaran e-wallet / transfer yang belum dikonfirmasi (untuk cek sore dan peringatan 60 menit).
+  if (params.get('menunggu') === '1') {
+    const rows = await query(
+      `SELECT s.id, s.nomor, s.total + s.pembulatan AS tagihan, s.paid_ewallet, s.paid_transfer, s.ewallet_ket, s.menunggu_sejak,
+         TIMESTAMPDIFF(MINUTE, s.menunggu_sejak, NOW()) AS menit, c.name AS customer_name, u.name AS kasir
+       FROM sales s JOIN users u ON u.id = s.user_id LEFT JOIN customers c ON c.id = s.customer_id
+       WHERE s.status = 'draft' AND s.menunggu_sejak IS NOT NULL ORDER BY s.menunggu_sejak`
+    );
+    return Response.json(rows);
+  }
+
   // Tanpa id: daftar nota per tanggal (untuk halaman Riwayat). Nota draf dan batal ikut tampil dengan statusnya.
   if (!id) {
     const date = params.get('date') || new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     const rows = await query(
-      `SELECT s.id, s.nomor, s.status, s.created_at, s.total, s.hutang, s.channel, u.name AS kasir, c.name AS customer_name,
+      `SELECT s.id, s.nomor, s.status, s.menunggu_sejak, s.created_at, s.total, s.hutang, s.channel, u.name AS kasir, c.name AS customer_name,
          (SELECT COALESCE(SUM(r.total),0) FROM sale_returns r WHERE r.sale_id = s.id) AS retur
        FROM sales s JOIN users u ON u.id = s.user_id LEFT JOIN customers c ON c.id = s.customer_id
        WHERE DATE(s.created_at) = ? ORDER BY s.id DESC`,
@@ -57,7 +70,8 @@ export async function GET(req) {
   }
 
   const sale = await queryOne(
-    `SELECT s.*, u.name AS kasir, c.name AS customer_name, c.total_hutang AS customer_hutang, c.last_hutang_date
+    `SELECT s.*, u.name AS kasir, c.name AS customer_name, c.total_hutang AS customer_hutang, c.last_hutang_date,
+       TIMESTAMPDIFF(MINUTE, s.menunggu_sejak, NOW()) AS menit_menunggu
      FROM sales s JOIN users u ON u.id = s.user_id LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id = ?`,
     [id]
   );

@@ -11,11 +11,13 @@ export default function Cek() {
   const [input, setInput] = useState({}); // `${product_id}:${variant_id}` -> teks
   const [msg, setMsg] = useState('');
   const [titipLama, setTitipLama] = useState([]);
+  const [menunggu, setMenunggu] = useState([]);
 
   const load = () => {
     fetch('/api/cek-sore').then((r) => r.json()).then(setPending);
     fetch('/api/stock').then((r) => r.json()).then(setStock);
     fetch('/api/saldo?stale=1').then((r) => r.json()).then(setTitipLama);
+    fetch('/api/sales?menunggu=1').then((r) => r.json()).then(setMenunggu);
   };
   useEffect(() => { load(); }, []);
 
@@ -71,6 +73,28 @@ export default function Cek() {
                 </p>
               </div>
             ))}
+          </>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Pembayaran menunggu konfirmasi</h2>
+        {!menunggu.length ? <p className="muted">Tidak ada.</p> : (
+          <>
+            <p className="muted">Cek mutasi e-wallet / transfer. Konfirmasi lewat Riwayat; barang belum boleh diserahkan sebelum dana masuk.</p>
+            <table>
+              <thead><tr><th>Nota</th><th>Pembeli</th><th>Metode</th><th className="r">Tagihan</th><th className="r">Menunggu</th></tr></thead>
+              <tbody>
+                {menunggu.map((n) => (
+                  <tr key={n.id}>
+                    <td>{n.nomor}</td><td>{n.customer_name || '-'}</td>
+                    <td>{n.paid_ewallet > 0 ? `E-wallet${n.ewallet_ket ? ' (' + n.ewallet_ket + ')' : ''}` : ''}{n.paid_transfer > 0 ? ' Transfer' : ''}</td>
+                    <td className="r">{rp(n.tagihan)}</td>
+                    <td className="r">{n.menit >= 60 ? <span className="badge red">⚠️ {n.menit} menit</span> : `${n.menit} menit`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </>
         )}
       </div>
