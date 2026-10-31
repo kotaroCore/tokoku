@@ -25,7 +25,10 @@ export async function GET(req) {
   const items = rows.length
     ? await query('SELECT * FROM purchase_items WHERE purchase_id IN (?) ORDER BY id', [rows.map((r) => r.id)])
     : [];
-  return Response.json(rows.map((r) => ({ ...r, items: items.filter((i) => i.purchase_id === r.id) })));
+  // Barang masuk dari PO: warna dan jumlah yang dipesan, untuk mengisi Masuk rak.
+  const poIds = [...new Set(rows.map((r) => r.po_id).filter(Boolean))];
+  const poItems = poIds.length ? await query('SELECT po_id, product_id, variant_id, qty * factor AS dasar FROM purchase_order_items WHERE po_id IN (?) AND variant_id IS NOT NULL', [poIds]) : [];
+  return Response.json(rows.map((r) => ({ ...r, items: items.filter((i) => i.purchase_id === r.id), po_items: poItems.filter((i) => i.po_id === r.po_id) })));
 }
 
 // Catat nota dari supplier (per produk, tanpa warna). Pembelian dianggap langsung lunas (lib/purchases.js).

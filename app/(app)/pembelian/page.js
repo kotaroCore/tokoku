@@ -349,6 +349,19 @@ function Shelve({ purchase, item, product, presets, onDone }) {
   const unitOf = (id) => opts.find((o) => o.name === vals[id]?.unit) || opts[0];
   const sumBase = Object.entries(vals).reduce((s, [id, x]) => s + (Number(x.qty) || 0) * unitOf(id).factor, 0);
   const sum = sumBase / item.factor;
+  // Warna dan jumlah dari PO (satuan dasar), dibatasi sisa yang belum dirak.
+  const dariPO = (purchase.po_items || []).filter((i) => i.product_id === item.product_id);
+  function isiDariPO() {
+    let sisa = item.qty * item.factor - item.shelved;
+    const out = {};
+    for (const i of dariPO) {
+      const ambil = Math.min(sisa, i.dasar);
+      if (ambil <= 0) break;
+      out[i.variant_id] = { qty: String(Math.round((ambil / item.factor) * 1000) / 1000) };
+      sisa -= ambil;
+    }
+    setVals(out);
+  }
 
   async function save() {
     setErr('');
@@ -372,6 +385,7 @@ function Shelve({ purchase, item, product, presets, onDone }) {
       <button type="button" className="secondary" onClick={() => setOpen(!open)}>{open ? 'Tutup' : 'Masuk rak'}</button>
       {open && product && (
         <div style={{ marginTop: 6 }}>
+          {dariPO.length > 0 && <button type="button" className="secondary" onClick={isiDariPO}>Isi warna dari PO #{purchase.po_id}</button>}
           <table>
             <thead><tr><th>Warna</th><th>Stok kini</th><th>Masuk</th></tr></thead>
             <tbody>

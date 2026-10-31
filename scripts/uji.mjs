@@ -486,7 +486,10 @@ test('PO ke supplier: tidak menyentuh stok, barang masuk dengan rujukan PO mengi
   const v = p.warna[0];
   const sup = (await query("INSERT INTO suppliers (name) VALUES ('Supplier PO Uji')")).insertId;
   const sesi = { userId: STAF, isAdmin: false, bolehModal: false };
-  const po = await tx((q) => buatPO(q, sesiStaf(), { supplier_id: sup, items: [{ product_id: p.pid, unit_name: 'gross', factor: 144, qty: 2 }] }));
+  const po = await tx((q) => buatPO(q, sesiStaf(), { supplier_id: sup, items: [{ product_id: p.pid, variant_id: v, unit_name: 'gross', factor: 144, qty: 2 }] }));
+  assert.equal((await queryOne('SELECT variant_id FROM purchase_order_items WHERE po_id = ?', [po.id])).variant_id, v);
+  const lain = await produk();
+  await ditolak(tx((q) => buatPO(q, sesiStaf(), { supplier_id: sup, items: [{ product_id: p.pid, variant_id: lain.warna[0], unit_name: 'gross', factor: 144, qty: 1 }] })), /Warna tidak termasuk/);
   assert.equal(await stok(v), 0);
   // PO draf belum bisa dipakai di barang masuk.
   await ditolak(tx((q) => catatPembelian(q, sesi, { po_id: po.id, items: [{ product_id: p.pid, unit_name: 'gross', factor: 144, qty: 1, unit_cost: 72000 }] })), /belum dikirim/);

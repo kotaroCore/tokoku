@@ -15,8 +15,8 @@ export async function GET(req) {
   );
   const items = rows.length
     ? await query(
-      `SELECT i.*, p.name AS product_name, p.base_unit FROM purchase_order_items i JOIN products p ON p.id = i.product_id
-       WHERE i.po_id IN (?) ORDER BY i.id`,
+      `SELECT i.*, p.name AS product_name, p.base_unit, v.color FROM purchase_order_items i JOIN products p ON p.id = i.product_id
+       LEFT JOIN variants v ON v.id = i.variant_id WHERE i.po_id IN (?) ORDER BY i.id`,
       [rows.map((r) => r.id)]
     )
     : [];

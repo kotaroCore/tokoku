@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { num, rp } from '@/lib/format';
 
 const LABEL = { yellow: 'Waspada', red: 'Kritis' };
@@ -12,7 +13,7 @@ export default function Kulakan() {
     <>
       <h1>Kulakan</h1>
       <div className="card">
-        <p style={{ marginTop: 0 }}>Barang yang stoknya kritis atau waspada, dengan harga beli terakhir dari tiap supplier.</p>
+        <p style={{ marginTop: 0 }}>Barang yang stoknya kritis atau waspada, dengan harga beli terakhir dari tiap supplier. Untuk memesan ke supplier per warna, buat <Link href="/po">PO</Link>.</p>
         {rows === null ? <p>Memuat...</p> : !rows.length ? <div className="alert ok">Semua stok aman, belum ada yang perlu dikulak.</div> : (
           <table>
             <thead><tr><th>Produk</th><th>Stok menipis</th><th>Harga terakhir (supplier · nota)</th></tr></thead>

@@ -17,9 +17,9 @@ export async function GET() {
 
   const ids = [...new Set(vars.map((v) => v.product_id))];
   const buys = await query(
-    `SELECT i.product_id, i.unit_name, i.unit_cost, i.purchase_id, p.created_at, p.supplier_id, s.name AS supplier_name
+    `SELECT i.product_id, i.unit_name, i.factor, i.unit_cost, i.purchase_id, p.created_at, p.supplier_id, s.name AS supplier_name
      FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id JOIN suppliers s ON s.id = p.supplier_id
-     WHERE s.active = 1 AND i.product_id IN (?)
+     WHERE s.active = 1 AND i.product_id IN (?) AND p.retur_supplier_id IS NULL
      ORDER BY p.created_at DESC, i.id DESC`,
     [ids]
   );
@@ -30,7 +30,7 @@ export async function GET() {
       out.set(v.product_id, { product_id: v.product_id, product_name: v.product_name, category: v.category, base_unit: v.base_unit, variants: [], suppliers: [] });
     }
     out.get(v.product_id).variants.push({
-      id: v.id, color: v.color, stock: v.stock, level_green: v.level_green,
+      id: v.id, color: v.color, stock: v.stock, level_green: v.level_green, level_yellow: v.level_yellow,
       status: v.stock <= v.level_red ? 'red' : 'yellow',
     });
   }
@@ -40,7 +40,7 @@ export async function GET() {
     if (seen.has(key)) continue;
     seen.add(key);
     out.get(b.product_id)?.suppliers.push({
-      supplier_name: b.supplier_name, unit_name: b.unit_name, unit_cost: b.unit_cost,
+      supplier_id: b.supplier_id, supplier_name: b.supplier_name, unit_name: b.unit_name, factor: b.factor, unit_cost: b.unit_cost,
       purchase_id: b.purchase_id, date: b.created_at,
     });
   }
