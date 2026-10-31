@@ -11,13 +11,13 @@ Tahap 2 menyelesaikan pekerjaan tahap 1 yang tersisa, lalu menambah hak akses (a
 
 | Milestone | Isi | Status |
 |---|---|---|
-| M0 | Penyamaan dokumen, hapus skema ganda (arsip), uji otomatis | Siap dikerjakan |
-| M1 | Peran admin, hak ubah harga, catatan perubahan | Siap dikerjakan |
-| M2 | Tindak lanjut stok rusak (jual, buang, retur ke supplier) | Siap dikerjakan |
-| M3 | Hutang: jatuh tempo, nama mirip, teks WhatsApp | Siap dikerjakan |
-| M4 | Laporan lanjutan, riwayat harga beli, ekspor PDF, tampilan HP | Siap dikerjakan |
-| M5 | Diskon rupiah, input stok awal bertahap | Siap dikerjakan |
-| M6 | PO ke supplier, lokasi rak dan opname per warna | Siap dikerjakan |
+| M0 | Penyamaan dokumen, hapus skema ganda (arsip), uji otomatis | Selesai di kode (31 Okt 2026) |
+| M1 | Peran admin, hak ubah harga, catatan perubahan | Selesai di kode |
+| M2 | Tindak lanjut stok rusak (jual, buang, retur ke supplier) | Selesai di kode |
+| M3 | Hutang: jatuh tempo, nama mirip, teks WhatsApp | Selesai di kode |
+| M4 | Laporan lanjutan, riwayat harga beli, ekspor PDF, tampilan HP | Selesai di kode |
+| M5 | Diskon rupiah, input stok awal bertahap | Selesai di kode |
+| M6 | PO ke supplier, lokasi rak dan opname per warna | Selesai di kode |
 | Nanti | PPh/PPN, redenominasi, pindah ke VPS, toko online (fase 3) | Di luar tahap 2 |
 
 Urutan pengerjaan mengikuti nomor milestone: M0, M1, M2, M3, M4, M5, M6.
@@ -36,8 +36,8 @@ Urutan pengerjaan mengikuti nomor milestone: M0, M1, M2, M3, M4, M5, M6.
 - Diskon ditampilkan dalam rupiah saja, tanpa persen, di layar maupun nota.
 
 **Hutang tahap 1** yang harus selesai sebelum tahap 1 dinyatakan selesai (kriteria di MVP_TAHAP1 bagian 7):
-- [ ] Ekspor laporan harian ke PDF (kriteria 6). Dikerjakan di M4.
-- [ ] Uji lunas, batal, retur, dan barang masuk tanpa data rusak (kriteria 8). Dikerjakan di M0.
+- [x] Ekspor laporan harian ke PDF (kriteria 6). Dikerjakan di M4 (Simpan PDF lewat dialog cetak).
+- [x] Uji lunas, batal, retur, dan barang masuk tanpa data rusak (kriteria 8). Dikerjakan di M0 (`npm run uji`).
 - [ ] Stok per warna dicocokkan dengan hitungan fisik sekali (kriteria 3). Pekerjaan di toko, dibantu input stok awal (M5) dan opname per warna (M6).
 
 ---
@@ -274,9 +274,16 @@ Semua kolom uang memakai `BIGINT`. Jumlah stok memakai `DOUBLE` dalam satuan das
 
 ## 11. Belum diputuskan
 
-- [ ] **Konfirmasi peran staf untuk laporan penjualan biasa:** saat ini staf tidak boleh melihat laporan laba. Apakah staf boleh melihat laporan penjualan tanpa laba?
-- [ ] **Opname: apakah opname bisa dibagi per ruangan** jika satu warna tersebar di banyak lokasi?
-- [ ] **Riwayat harga beli:** apakah harga per satuan dasar ditampilkan juga, atau hanya harga per satuan beli?
+- [x] **Konfirmasi peran staf untuk laporan penjualan biasa:** diputuskan 31 Okt 2026: staf boleh melihat laporan penjualan tanpa laba. Laba, modal, nilai stok, dan riwayat harga beli butuh izin `laporan_laba`.
+- [x] **Opname: apakah opname bisa dibagi per ruangan:** diputuskan 31 Okt 2026: satu rak bisa berisi banyak warna dan satu warna bisa ada di beberapa tempat dengan jumlah berbeda. Opname dilakukan per warna dalam satu layar: jumlah fisik diketik per tempat, lalu dijumlahkan.
+- [x] **Riwayat harga beli:** diputuskan 31 Okt 2026: hanya harga per satuan beli.
+
+**Catatan pelaksanaan:**
+- Harga beli per satuan dasar (`products.cost`, `harga_alert`, `sale_items.modal`) tetap DECIMAL karena hasil bagi, bukan jumlah uang. Kolom uang lainnya BIGINT.
+- Tabel barang masuk di kode bernama `purchases` dan `purchase_items` (di dokumen ini disebut `barang_masuk` dan `barang_masuk_item`).
+- Template `template_pengingat_wa` tahap 1 tidak ditemukan; teks awal `wa_pengingat` memakai teks pengingat yang sudah dipakai, ditambah penanda.
+- Staf tanpa izin ubah modal tetap boleh mencatat harga di nota supplier, tetapi harga beli produk tidak berubah sampai admin menutup peringatan harga. Produk yang belum punya harga beli tetap diisi dari nota pertama.
+- Izin per staf: `ubah_harga`, `ubah_modal`, `buang_rusak`, `laporan_laba`. Teks WhatsApp dan pengaturan lain hanya admin.
 
 ---
 
