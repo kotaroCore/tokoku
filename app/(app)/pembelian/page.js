@@ -51,6 +51,7 @@ export default function Pembelian() {
   const [caraKirim, setCaraKirim] = useState('');
   const [poList, setPoList] = useState([]); // PO yang sudah dikirim dan belum diterima penuh
   const [poId, setPoId] = useState('');
+  const [lokasi, setLokasi] = useState([]); // daftar tempat (dibuat admin) untuk masuk rak
   const loadPending = () => fetch('/api/purchases?pending=1').then((r) => r.json()).then(setPending);
   const loadAlerts = () => fetch('/api/harga-alert').then((r) => r.json()).then(setAlerts);
   async function tutupAlert(id, aksi) {
@@ -75,6 +76,7 @@ export default function Pembelian() {
     fetch('/api/products').then((r) => r.json()).then(setProducts);
     fetch('/api/suppliers').then((r) => r.json()).then(setSuppliers);
     fetch('/api/unit-presets').then((r) => r.json()).then(setPresets);
+    fetch('/api/lokasi').then((r) => r.json()).then(setLokasi);
   }, []);
   useEffect(() => { loadList(); }, [date]);
   useEffect(() => { loadPending(); loadAlerts(); fetch('/api/po?terbuka=1').then((r) => r.json()).then(setPoList); }, []);
@@ -297,7 +299,7 @@ export default function Pembelian() {
             <strong>#{p.id}</strong> • {p.created_at.slice(0, 10)} • {p.supplier_name || 'tanpa supplier'}
             {p.note && <span className="muted"> • {p.note}</span>}
             {p.items.filter((i) => i.shelved < i.qty * i.factor - 1e-6).map((i) => (
-              <Shelve key={i.id} purchase={p} item={i} product={products.find((x) => x.id === i.product_id)} presets={presets} onDone={reloadAll} />
+              <Shelve key={i.id} purchase={p} item={i} product={products.find((x) => x.id === i.product_id)} presets={presets} lokasi={lokasi} onDone={reloadAll} />
             ))}
           </div>
         ))}
@@ -334,7 +336,7 @@ export default function Pembelian() {
 }
 
 // Bagi barang dari satu baris nota ke warna-warna produknya; stok tiap warna bertambah.
-function Shelve({ purchase, item, product, presets, onDone }) {
+function Shelve({ purchase, item, product, presets, lokasi, onDone }) {
   const [open, setOpen] = useState(false);
   const [vals, setVals] = useState({});
   const [err, setErr] = useState('');
@@ -349,6 +351,9 @@ function Shelve({ purchase, item, product, presets, onDone }) {
   const unitOf = (id) => opts.find((o) => o.name === vals[id]?.unit) || opts[0];
   const sumBase = Object.entries(vals).reduce((s, [id, x]) => s + (Number(x.qty) || 0) * unitOf(id).factor, 0);
   const sum = sumBase / item.factor;
+  // Tempat wajib dipilih. Bawaan: tempat 1 warna itu (bila sudah punya tempat).
+  const variantOf = (id) => product?.variants.find((v) => v.id === Number(id));
+  const tempatOf = (id) => vals[id]?.lokasi_id ?? variantOf(id)?.tempat?.[0]?.lokasi_id ?? '';
   // Warna dan jumlah dari PO (satuan dasar), dibatasi sisa yang belum dirak.
   const dariPO = (purchase.po_items || []).filter((i) => i.product_id === item.product_id);
   function isiDariPO() {
@@ -365,8 +370,9 @@ function Shelve({ purchase, item, product, presets, onDone }) {
 
   async function save() {
     setErr('');
-    const lines = Object.entries(vals).filter(([, x]) => Number(x.qty) > 0).map(([id, x]) => ({ variant_id: Number(id), qty: Number(x.qty), factor: unitOf(id).factor, tempat: Number(x.tempat) || null }));
+    const lines = Object.entries(vals).filter(([, x]) => Number(x.qty) > 0).map(([id, x]) => ({ variant_id: Number(id), qty: Number(x.qty), factor: unitOf(id).factor, lokasi_id: Number(tempatOf(id)) || null }));
     if (!lines.length) return setErr('Isi jumlah minimal satu warna');
+    if (lines.some((l) => !l.lokasi_id)) return setErr('Pilih tempat untuk setiap warna yang masuk rak');
     setBusy(true);
     const r = await fetch(`/api/purchases/${purchase.id}/shelve`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -385,6 +391,7 @@ function Shelve({ purchase, item, product, presets, onDone }) {
       <button type="button" className="secondary" onClick={() => setOpen(!open)}>{open ? 'Tutup' : 'Masuk rak'}</button>
       {open && product && (
         <div style={{ marginTop: 6 }}>
+          {!lokasi.length && <div className="alert">Belum ada daftar tempat. Admin menambahkannya di <a href="/stok/lokasi">Lokasi rak</a> sebelum barang bisa masuk rak.</div>}
           {dariPO.length > 0 && <button type="button" className="secondary" onClick={isiDariPO}>Isi warna dari PO #{purchase.po_id}</button>}
           <table>
             <thead><tr><th>Warna</th><th>Stok kini</th><th>Masuk</th><th>Ke tempat</th></tr></thead>
@@ -401,11 +408,13 @@ function Shelve({ purchase, item, product, presets, onDone }) {
                     {Number(vals[v.id]?.qty) > 0 && <span className="muted"> = {num(Number(vals[v.id].qty) * unitOf(v.id).factor)} {product.base_unit}</span>}
                   </td>
                   <td>
-                    {v.tempat?.length > 1 ? (
-                      <select value={vals[v.id]?.tempat || 1} onChange={(e) => setVals({ ...vals, [v.id]: { ...vals[v.id], tempat: e.target.value } })}>
-                        {v.tempat.map((t) => <option key={t.urutan} value={t.urutan}>{t.lokasi} ({num(t.qty)})</option>)}
-                      </select>
-                    ) : <span className="muted">{v.tempat?.[0]?.lokasi || '-'}</span>}
+                    {/* Tempat warna ini dulu, lalu tempat lain (warna bisa punya maks. 3 tempat). */}
+                    <select value={tempatOf(v.id)} onChange={(e) => setVals({ ...vals, [v.id]: { ...vals[v.id], lokasi_id: e.target.value } })}
+                      style={Number(vals[v.id]?.qty) > 0 && !tempatOf(v.id) ? { borderColor: 'var(--red)' } : undefined}>
+                      <option value="">— pilih tempat —</option>
+                      {(v.tempat || []).map((t) => <option key={t.lokasi_id} value={t.lokasi_id}>{t.lokasi} ({num(t.qty)})</option>)}
+                      {(v.tempat?.length || 0) < 3 && lokasi.filter((l) => !(v.tempat || []).some((t) => t.lokasi_id === l.id)).map((l) => <option key={l.id} value={l.id}>{l.label} (tempat baru)</option>)}
+                    </select>
                   </td>
                 </tr>
               ))}

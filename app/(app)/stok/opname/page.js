@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { num } from '@/lib/format';
 import { MAKS_TEMPAT } from '../Tempat';
 
-const kosong = () => ({ lokasi: '', qty: '' });
+const kosong = () => ({ lokasi_id: '', qty: '' });
 
 // Stok opname per warna: pilih satu warna, ketik jumlah fisik di setiap tempat warna itu disimpan
 // (satu warna bisa ada di beberapa rak dengan jumlah berbeda). Total dibandingkan dengan stok sistem;
@@ -38,7 +38,7 @@ export default function Opname() {
     const d = await fetch(`/api/opname?variant_id=${id}`).then((r) => r.json());
     setV(d);
     // Baris = tempat penyimpanan warna ini (maks. 3). Hasil hitungan menjadi stok tiap tempat.
-    setBaris(d.tempat.length ? d.tempat.map((t) => ({ lokasi: t.lokasi, qty: '' })) : [kosong()]);
+    setBaris(d.tempat.length ? d.tempat.map((t) => ({ lokasi_id: String(t.lokasi_id || ''), qty: '' })) : [kosong()]);
   }
 
   const angka = (s) => Number(String(s).replace(',', '.'));
@@ -50,11 +50,11 @@ export default function Opname() {
     setErr('');
     if (!terisi.length) return setErr('Isi jumlah fisik minimal satu tempat (0 bila kosong).');
     if (terisi.some((b) => !(angka(b.qty) >= 0))) return setErr('Jumlah fisik tidak valid.');
-    if (terisi.length > 1 && terisi.some((b) => !b.lokasi.trim())) return setErr('Isi nama tempat di setiap baris.');
+    if ((terisi.length > 1 || v.tempat.length) && terisi.some((b) => !b.lokasi_id)) return setErr('Pilih tempat di setiap baris.');
     if (selisih && !alasan.trim()) return setErr('Ada selisih: isi alasannya.');
     const r = await fetch('/api/opname', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ variant_id: v.id, items: terisi.map((b) => ({ lokasi: b.lokasi, qty: angka(b.qty) })), alasan }),
+      body: JSON.stringify({ variant_id: v.id, items: terisi.map((b) => ({ lokasi_id: Number(b.lokasi_id) || null, qty: angka(b.qty) })), alasan }),
     });
     const d = await r.json();
     if (!r.ok) return setErr(d.error);
@@ -67,7 +67,7 @@ export default function Opname() {
   return (
     <>
       <h1>Stok opname per warna</h1>
-      <p className="muted">Pilih satu warna, lalu ketik jumlah fisik di setiap tempat warna itu disimpan (maks. {MAKS_TEMPAT} tempat, nama diketik bebas). Totalnya menjadi stok warna, dan hasil tiap tempat menjadi stok tempat itu. <Link href="/stok">← Stok</Link> · <Link href="/stok/lokasi">Daftar lokasi</Link></p>
+      <p className="muted">Pilih satu warna, lalu ketik jumlah fisik di setiap tempat warna itu disimpan (maks. {MAKS_TEMPAT} tempat, dipilih dari daftar lokasi). Totalnya menjadi stok warna, dan hasil tiap tempat menjadi stok tempat itu. <Link href="/stok">← Stok</Link> · <Link href="/stok/lokasi">Daftar lokasi</Link></p>
       {msg && <div className="alert ok">{msg}</div>}
 
       <div className="card">
@@ -89,13 +89,18 @@ export default function Opname() {
           <>
             <h2>{v.product_name} — {v.color || '-'}</h2>
             <p>Stok sistem: <strong>{num(v.stock)} {v.base_unit}</strong>{v.tempat.length > 0 && <span className="muted"> • {v.tempat.map((t) => `${t.lokasi}: ${num(t.qty)}`).join(', ')}</span>}</p>
-            <datalist id="lokasi-list">{lokasi.map((l) => <option key={l.id} value={l.label} />)}</datalist>
             <table>
               <thead><tr><th>Tempat / lokasi</th><th>Jumlah fisik ({v.base_unit})</th><th></th></tr></thead>
               <tbody>
                 {baris.map((b, i) => (
                   <tr key={i}>
-                    <td><input list="lokasi-list" value={b.lokasi} placeholder="mis. Toko / Lemari A / Rak 2" onChange={(e) => setBaris(baris.map((x, j) => (j === i ? { ...x, lokasi: e.target.value } : x)))} /></td>
+                    <td>
+                      <select value={b.lokasi_id} onChange={(e) => setBaris(baris.map((x, j) => (j === i ? { ...x, lokasi_id: e.target.value } : x)))}>
+                        <option value="">— pilih tempat —</option>
+                        {v.tempat.filter((t) => t.lokasi_id && !lokasi.some((l) => l.id === t.lokasi_id)).map((t) => <option key={t.lokasi_id} value={t.lokasi_id}>{t.lokasi} (nonaktif)</option>)}
+                        {lokasi.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+                      </select>
+                    </td>
                     <td><input inputMode="decimal" style={{ width: 110 }} value={b.qty} onChange={(e) => setBaris(baris.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} /></td>
                     <td>{baris.length > 1 && <button type="button" className="secondary" onClick={() => setBaris(baris.filter((_, j) => j !== i))}>Hapus</button>}</td>
                   </tr>

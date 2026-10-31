@@ -284,7 +284,7 @@ Semua kolom uang memakai `BIGINT`. Jumlah stok memakai `DOUBLE` dalam satuan das
 - Template `template_pengingat_wa` tahap 1 tidak ditemukan; teks awal `wa_pengingat` memakai teks pengingat yang sudah dipakai, ditambah penanda.
 - Staf tanpa izin ubah modal tetap boleh mencatat harga di nota supplier, tetapi harga beli produk tidak berubah sampai admin menutup peringatan harga. Produk yang belum punya harga beli tetap diisi dari nota pertama.
 - Izin per staf: `ubah_harga`, `ubah_modal`, `buang_rusak`, `laporan_laba`. Teks WhatsApp dan pengaturan lain hanya admin.
-- Lokasi (diputuskan 31 Okt 2026, mengubah 8.2): tiap warna punya maksimal 3 tempat penyimpanan, nama diketik bebas, masing-masing dengan stoknya (tabel `variant_lokasi`). Stok warna tetap satu angka dan jumlah stok semua tempat selalu sama dengannya. Barang terjual diambil dari tempat 1, lalu 2, lalu 3; stok bertambah masuk ke tempat 1, kecuali masuk rak yang memilih tempat. Opname menetapkan stok tiap tempat. `variants.lokasi_rak` berisi nama tempat 1.
+- Lokasi (diputuskan 31 Okt 2026, mengubah 8.2): tiap warna punya maksimal 3 tempat penyimpanan, masing-masing dengan stoknya (tabel `variant_lokasi`). Tempat dipilih dari daftar lokasi yang hanya bisa ditambah dan diubah admin, dan masuk rak wajib memilih tempat. Stok warna tetap satu angka dan jumlah stok semua tempat selalu sama dengannya. Barang terjual diambil dari tempat 1, lalu 2, lalu 3; stok bertambah masuk ke tempat 1, kecuali masuk rak yang memilih tempat. Opname menetapkan stok tiap tempat. `variants.lokasi_rak` berisi nama tempat 1.
 - PO dipesan per warna dari daftar stok menipis (`purchase_order_items.variant_id`).
 
 ---
