@@ -65,6 +65,7 @@ export default function PO() {
 function PoBaru({ onClose, onSaved }) {
   const [list, setList] = useState(null); // dari /api/kulakan
   const [units, setUnits] = useState({}); // product_id -> satuan jual produk
+  const [presets, setPresets] = useState([]); // daftar satuan (halaman Satuan), sama seperti di Pembelian
   const [suppliers, setSuppliers] = useState([]);
   const [supplierId, setSupplierId] = useState('');
   const [pilih, setPilih] = useState({}); // variant_id -> teks jumlah
@@ -77,13 +78,18 @@ function PoBaru({ onClose, onSaved }) {
     fetch('/api/kulakan').then((r) => r.json()).then(setList);
     fetch('/api/suppliers').then((r) => r.json()).then(setSuppliers);
     fetch('/api/products').then((r) => r.json()).then((ps) => setUnits(Object.fromEntries(ps.map((p) => [p.id, p.units]))));
+    fetch('/api/unit-presets').then((r) => r.json()).then(setPresets);
   }, []);
 
-  // Pilihan satuan: satuan di nota supplier sebelumnya, lalu satuan jual produk.
+  // Pilihan satuan: satuan di nota supplier sebelumnya, satuan jual produk, lalu daftar satuan yang cocok dengan satuan dasarnya.
   const opsi = (p) => {
     const out = [];
     for (const s of p.suppliers) if (!out.some((o) => o.name === s.unit_name)) out.push({ name: s.unit_name, factor: s.factor });
     for (const u of [...(units[p.product_id] || [])].sort((a, b) => b.factor - a.factor)) if (!out.some((o) => o.name === u.name)) out.push({ name: u.name, factor: u.factor });
+    const base = p.base_unit.trim().toLowerCase();
+    for (const x of presets) {
+      if (x.factor != null && (!x.base_unit || x.base_unit.toLowerCase() === base) && !out.some((o) => o.name === x.name)) out.push({ name: x.name, factor: x.factor });
+    }
     if (!out.length) out.push({ name: p.base_unit, factor: 1 });
     return out;
   };
@@ -191,6 +197,19 @@ function PoBaru({ onClose, onSaved }) {
                 })}
               </tbody>
             </table>
+            {(() => {
+              // Total jumlah produk ini, juga dalam satuan dasar dan satuan yang lebih besar (mis. 12 dosin = 1 gross).
+              const jml = p.variants.reduce((t, v) => t + (pilih[v.id] != null ? Number(String(pilih[v.id]).replace(',', '.')) || 0 : 0), 0);
+              if (!jml) return null;
+              const dasar = jml * u.factor;
+              const besar = opsi(p).filter((o) => o.factor > u.factor);
+              return (
+                <p style={{ margin: '6px 0 0' }}>
+                  Total <strong>{num(jml)} {u.name}</strong>{u.factor !== 1 && ` = ${num(dasar)} ${p.base_unit}`}
+                  {besar.map((o) => ` = ${num(dasar / o.factor)} ${o.name}`).join('')}
+                </p>
+              );
+            })()}
           </div>
         );
       })}
