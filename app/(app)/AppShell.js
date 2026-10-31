@@ -19,6 +19,7 @@ const ITEMS = [
   { href: '/kulakan', icon: '🛍️', label: 'Kulakan' },
   { href: '/pembelian', icon: '📥', label: 'Pembelian' },
   { href: '/supplier', icon: '🚚', label: 'Supplier' },
+  { href: '/po', icon: '📝', label: 'PO' },
   { href: '/panel', icon: '⚙️', label: 'Panel', admin: true },
 ];
 

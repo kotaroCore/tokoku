@@ -101,7 +101,7 @@ export default function Cek() {
     load();
   }
 
-  const shown = stock.filter((v) => `${v.product_name} ${v.color} ${v.category}`.toLowerCase().includes(q.toLowerCase()));
+  const shown = stock.filter((v) => `${v.product_name} ${v.color} ${v.category} ${v.lokasi_rak || ''}`.toLowerCase().includes(q.toLowerCase()));
   // Langkah 5: warna laris (hitam, putih, natural) dan barang kuning atau merah.
   const perluDilihat = stock.filter((v) => v.status === 'yellow' || v.status === 'red' || /hitam|putih|natural/i.test(v.color || ''));
   const selisihEwallet = Number(harian.mutasiEwallet || 0) - (harian.sistem.ewallet || 0);
@@ -307,11 +307,11 @@ export default function Cek() {
         <h2>Cek stok produk</h2>
         <div className="field"><label>Cari</label><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nama produk / warna" /></div>
         <table>
-          <thead><tr><th>Produk</th><th>Warna</th><th className="r">Stok</th><th>Status</th></tr></thead>
+          <thead><tr><th>Produk</th><th>Warna</th><th>Lokasi</th><th className="r">Stok</th><th>Status</th></tr></thead>
           <tbody>
             {shown.map((v) => (
               <tr key={v.id}>
-                <td>{v.product_name}</td><td>{v.color || '-'}</td>
+                <td>{v.product_name}</td><td>{v.color || '-'}</td><td className="muted">{v.lokasi_rak || '-'}</td>
                 <td className="r">{num(v.stock)} {v.base_unit}{v.stok_rusak > 0 && <div className="muted">rusak {num(v.stok_rusak)}</div>}</td>
                 <td><span className={`badge ${v.status}`}>{LABEL[v.status]}</span></td>
               </tr>

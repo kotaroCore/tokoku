@@ -49,6 +49,8 @@ export default function Pembelian() {
   const [status, setStatus] = useState('diterima');
   const [noSupplier, setNoSupplier] = useState('');
   const [caraKirim, setCaraKirim] = useState('');
+  const [poList, setPoList] = useState([]); // PO yang sudah dikirim dan belum diterima penuh
+  const [poId, setPoId] = useState('');
   const loadPending = () => fetch('/api/purchases?pending=1').then((r) => r.json()).then(setPending);
   const loadAlerts = () => fetch('/api/harga-alert').then((r) => r.json()).then(setAlerts);
   async function tutupAlert(id, aksi) {
@@ -75,7 +77,20 @@ export default function Pembelian() {
     fetch('/api/unit-presets').then((r) => r.json()).then(setPresets);
   }, []);
   useEffect(() => { loadList(); }, [date]);
-  useEffect(() => { loadPending(); loadAlerts(); }, []);
+  useEffect(() => { loadPending(); loadAlerts(); fetch('/api/po?terbuka=1').then((r) => r.json()).then(setPoList); }, []);
+
+  // Barang masuk dari PO: supplier dan sisa barang yang belum diterima diisi otomatis (masih bisa diubah).
+  function pilihPO(id) {
+    setPoId(id);
+    const po = poList.find((x) => String(x.id) === id);
+    if (!po) return;
+    setSupplierId(String(po.supplier_id));
+    setCart(po.items.map((i) => {
+      const p = products.find((x) => x.id === i.product_id);
+      const sisa = Math.max(0, i.qty * i.factor - i.diterima) / i.factor;
+      return p && sisa > 0 ? { key: `po${i.id}`, p, unit: i.unit_name, factor: String(i.factor), qty: String(Math.round(sisa * 1000) / 1000), cost: i.harga_perkiraan != null ? String(i.harga_perkiraan) : costFor(p, i.factor) } : null;
+    }).filter(Boolean));
+  }
 
   const matches = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -131,7 +146,7 @@ export default function Pembelian() {
     const r = await fetch('/api/purchases', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        supplier_id: supplierId || null, pay_method: method, note,
+        supplier_id: supplierId || null, pay_method: method, note, po_id: poId || null,
         status, nomor_nota_supplier: noSupplier, cara_kirim: caraKirim,
         items: cart.map((l) => ({ product_id: l.p.id, unit_name: l.unit, factor: factorOf(l), qty: Number(l.qty), unit_cost: Number(l.cost) })),
       }),
@@ -145,7 +160,8 @@ export default function Pembelian() {
       if (!up.ok) photoMsg = ' Foto nota GAGAL diunggah — pembelian tetap tersimpan.';
     }
     setMsg(`Pembelian #${d.id} tersimpan (${rp(d.total)}). Stok belum bertambah: masukkan ke rak per warna di bagian "Menunggu masuk rak".${photoMsg}`);
-    setCart([]); setNote(''); setNoSupplier(''); setCaraKirim(''); setStatus('diterima'); clearPhoto();
+    setCart([]); setNote(''); setNoSupplier(''); setPoId('');
+    fetch('/api/po?terbuka=1').then((r) => r.json()).then(setPoList); setCaraKirim(''); setStatus('diterima'); clearPhoto();
     loadPending();
     if (date === today()) loadList(); else setDate(today());
   }
@@ -154,6 +170,15 @@ export default function Pembelian() {
     <>
       <h1>Pembelian / barang masuk</h1>
       <form className="card" onSubmit={submit}>
+        {poList.length > 0 && (
+          <div className="field">
+            <label>Barang datang dari PO (opsional)</label>
+            <select value={poId} onChange={(e) => pilihPO(e.target.value)}>
+              <option value="">— bukan dari PO —</option>
+              {poList.map((po) => <option key={po.id} value={po.id}>PO #{po.id} • {po.supplier_name} • {po.dibuat_pada.slice(0, 10)}</option>)}
+            </select>
+          </div>
+        )}
         <div className="field" style={{ position: 'relative' }}>
           <label>Cari produk yang dikulak (ketik min. 2 huruf), warna diisi nanti saat barang masuk rak</label>
           <input placeholder="mis. benang jahit yamalaon kecil" value={q} onChange={(e) => setQ(e.target.value)} />

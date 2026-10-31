@@ -22,7 +22,8 @@ const { query, queryOne, tx, closeDb } = await import('../lib/db.js');
 const { BadRequest, buatNota, lunasiNota, batalkanNota, bayarHutang, tambahSaldo } = await import('../lib/sales.js');
 const { prosesRetur } = await import('../lib/returns.js');
 const { catatPembelian, ubahStatusPembelian, masukRak } = await import('../lib/purchases.js');
-const { koreksiStok, cekSoreAlokasi, isiStokAwal } = await import('../lib/stok.js');
+const { koreksiStok, cekSoreAlokasi, isiStokAwal, simpanOpname } = await import('../lib/stok.js');
+const { buatPO, ubahStatusPO } = await import('../lib/po.js');
 const { ubahProduk } = await import('../lib/produk.js');
 const { buangRusak, buatReturSupplier, selesaikanReturSupplier } = await import('../lib/rusak.js');
 const { NamaMirip, namaMirip, teksPengingat } = await import('../lib/pembeli.js');
@@ -478,4 +479,50 @@ test('Stok awal: stok diganti hasil hitungan, selisih tercatat, warna diberi tan
   await tx((q) => isiStokAwal(q, { variantId: v, userId: STAF, jumlah: 36 }));
   assert.equal((await query("SELECT * FROM stock_adjustments WHERE variant_id = ? AND jenis = 'stok_awal'", [v])).length, 1);
   await ditolak(tx((q) => isiStokAwal(q, { variantId: v, userId: STAF, jumlah: -1 })), /tidak valid/);
+});
+
+test('PO ke supplier: tidak menyentuh stok, barang masuk dengan rujukan PO mengisi jumlah diterima', async () => {
+  const p = await produk({ stok: [0] });
+  const v = p.warna[0];
+  const sup = (await query("INSERT INTO suppliers (name) VALUES ('Supplier PO Uji')")).insertId;
+  const sesi = { userId: STAF, isAdmin: false, bolehModal: false };
+  const po = await tx((q) => buatPO(q, sesiStaf(), { supplier_id: sup, items: [{ product_id: p.pid, unit_name: 'gross', factor: 144, qty: 2 }] }));
+  assert.equal(await stok(v), 0);
+  // PO draf belum bisa dipakai di barang masuk.
+  await ditolak(tx((q) => catatPembelian(q, sesi, { po_id: po.id, items: [{ product_id: p.pid, unit_name: 'gross', factor: 144, qty: 1, unit_cost: 72000 }] })), /belum dikirim/);
+  await tx((q) => ubahStatusPO(q, po.id, 'dikirim'));
+  // Barang dalam perjalanan belum dihitung diterima.
+  const b1 = await tx((q) => catatPembelian(q, sesi, { po_id: po.id, status: 'dalam_perjalanan', items: [{ product_id: p.pid, unit_name: 'gross', factor: 144, qty: 1, unit_cost: 72000 }] }));
+  assert.equal((await queryOne('SELECT status FROM purchase_orders WHERE id = ?', [po.id])).status, 'dikirim');
+  await tx((q) => ubahStatusPembelian(q, b1.id, 'diterima', sesi));
+  assert.equal((await queryOne('SELECT status FROM purchase_orders WHERE id = ?', [po.id])).status, 'diterima_sebagian');
+  assert.equal((await queryOne('SELECT diterima FROM purchase_order_items WHERE po_id = ?', [po.id])).diterima, 144);
+  assert.equal(await stok(v), 0); // stok baru bertambah saat masuk rak
+  await tx((q) => catatPembelian(q, sesi, { po_id: po.id, items: [{ product_id: p.pid, unit_name: 'dosin', factor: 12, qty: 12, unit_cost: 6000 }] }));
+  const selesai = await queryOne('SELECT * FROM purchase_orders WHERE id = ?', [po.id]);
+  assert.equal(selesai.status, 'diterima');
+  await ditolak(tx((q) => ubahStatusPO(q, po.id, 'batal')), /sudah diterima/);
+  const item = await queryOne('SELECT * FROM purchase_items WHERE purchase_id = ?', [b1.id]);
+  await tx((q) => masukRak(q, b1.id, item.id, [{ variant_id: v, qty: 1 }], STAF));
+  assert.equal(await stok(v), 144);
+});
+
+test('Opname per warna: jumlah fisik dari beberapa lokasi, selisih tercatat sebagai koreksi dengan alasan', async () => {
+  const p = await produk({ stok: [100] });
+  const v = p.warna[0];
+  const items = [{ lokasi: 'Toko / Lemari A / Rak 1', qty: 60 }, { lokasi: 'Gudang / Rak 3', qty: 37 }];
+  await ditolak(tx((q) => simpanOpname(q, { variantId: v, userId: STAF, items, alasan: '' })), /alasan/);
+  await ditolak(tx((q) => simpanOpname(q, { variantId: v, userId: STAF, items: [{ lokasi: 'Toko', qty: -1 }], alasan: 'x' })), /negatif/);
+  const r = await tx((q) => simpanOpname(q, { variantId: v, userId: STAF, items, alasan: 'salah warna saat jual' }));
+  assert.equal(r.jumlah_fisik, 97);
+  assert.equal(r.selisih, -3);
+  assert.equal(await stok(v), 97);
+  const adj = await queryOne("SELECT * FROM stock_adjustments WHERE variant_id = ? AND jenis = 'opname'", [v]);
+  assert.equal(adj.delta, -3);
+  const o = await queryOne('SELECT * FROM opname WHERE id = ?', [r.id]);
+  assert.deepEqual([o.stok_sistem, o.jumlah_fisik, o.user_id], [100, 97, STAF]);
+  assert.equal((await query('SELECT * FROM opname_item WHERE opname_id = ?', [r.id])).length, 2);
+  // Tanpa selisih: tercatat, tanpa koreksi dan tanpa alasan.
+  await tx((q) => simpanOpname(q, { variantId: v, userId: STAF, items: [{ lokasi: 'Toko', qty: 97 }] }));
+  assert.equal((await query("SELECT * FROM stock_adjustments WHERE variant_id = ? AND jenis = 'opname'", [v])).length, 1);
 });
