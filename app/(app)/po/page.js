@@ -98,10 +98,12 @@ function PoBaru({ onClose, onSaved }) {
     const t = terakhir(p);
     return t && t.unit_name === unitOf(p).name ? String(t.unit_cost) : '';
   };
-  // Saran jumlah: sampai level hijau, dibulatkan ke atas dalam satuan pesan.
+  // Saran jumlah: paling banyak (level hijau - sisa stok), dibulatkan ke bawah dalam satuan pesan
+  // supaya stok tidak melebihi level hijau. Bila kurang dari satu satuan, kosong dan diisi manual.
   const saran = (p, v) => {
     const f = unitOf(p).factor;
-    return String(Math.max(1, Math.ceil(Math.max(0, (v.level_green || v.level_yellow) - v.stock) / f)));
+    const n = Math.floor((Math.max(0, (v.level_green || v.level_yellow) - v.stock) + 1e-9) / f);
+    return n > 0 ? String(n) : '';
   };
 
   function gantiSupplier(id) {
