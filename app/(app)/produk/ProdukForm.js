@@ -1,6 +1,8 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { rp, num } from '@/lib/format';
+import { boleh } from '@/lib/izin';
+import { useMe } from '../me';
 
 export const CATS = ['BENANG', 'FURING', 'RESLETING', 'BENIK', 'KAIN'];
 // Pilihan satuan jual (listbox) diambil dari database (/api/unit-presets, dikelola di halaman Satuan).
@@ -101,6 +103,11 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const edit = !!f.id;
+  const me = useMe();
+  // Produk lama: harga satuan yang sudah ada dan modal terkunci bagi staf tanpa izin (API juga menolak).
+  const kunciHarga = edit && !boleh(me, 'ubah_harga');
+  const kunciModal = edit && !boleh(me, 'ubah_modal');
+  const terkunci = (u) => kunciHarga && !!u.id;
   const warns = useMemo(() => unitWarnings(f), [f]);
   // Hanya satuan yang cocok dengan satuan dasar produk (atau yang berlaku untuk semua).
   const base = f.base_unit.trim().toLowerCase();
@@ -144,9 +151,14 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
           <div className="field"><label>Satuan dasar stok (biji / meter / buah)</label>
             <input required value={f.base_unit} onChange={(e) => setF({ ...f, base_unit: e.target.value })} /></div>
           <div className="field"><label>Harga beli / modal per {f.base_unit || 'satuan dasar'} (opsional)</label>
-            <input inputMode="numeric" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value, units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })} /></div>
+            <input inputMode="numeric" disabled={kunciModal} value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value, units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })} /></div>
         </div>
-        {f.last_buy && (
+        {(kunciHarga || kunciModal) && (
+          <div className="alert" style={{ marginBottom: 8 }}>
+            🔒 {kunciHarga && kunciModal ? 'Harga jual dan modal' : kunciHarga ? 'Harga jual satuan yang sudah ada' : 'Modal'} terkunci. Minta izin ke admin untuk mengubahnya. Satuan baru tetap boleh ditambah.
+          </div>
+        )}
+        {f.last_buy && !kunciModal && (
           <div style={{ marginBottom: 8 }}>
             <button type="button" className="secondary" onClick={() => setF({ ...f, cost: String(Math.round((f.last_buy.unit_cost / f.last_buy.factor) * 100) / 100), units: f.units.map((u) => ({ ...u, modalEdit: undefined })) })}>
               Pakai harga nota terakhir
@@ -174,7 +186,7 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
           return (
             <div className="unit-row" key={i}>
               <div className="field"><label>Satuan</label>
-                <select required value={u.unit} onChange={(e) => {
+                <select required disabled={terkunci(u)} value={u.unit} onChange={(e) => {
                   const o = presets.find((x) => x.name === e.target.value);
                   setF({ ...f, units: f.units.map((x, j) => (j === i ? { ...x, unit: e.target.value, factor: o?.factor != null ? String(o.factor) : x.factor } : x)) });
                 }}>
@@ -186,18 +198,18 @@ export function ProductForm({ init, cats, presets, variants, onChanged, onDone, 
               <div className="field"><label>Judul paket (opsional)</label>
                 <input value={u.title} placeholder="mis. 3 warna" onChange={(e) => setUnit(i, 'title', e.target.value)} />
               </div>
-              <div className="field"><label>Faktor</label><input required inputMode="decimal" value={u.factor} onChange={(e) => setUnit(i, 'factor', e.target.value)} /></div>
+              <div className="field"><label>Faktor</label><input required inputMode="decimal" disabled={terkunci(u)} value={u.factor} onChange={(e) => setUnit(i, 'factor', e.target.value)} /></div>
               <div className="field"><label>Harga modal</label>
-                <input inputMode="numeric" value={modalShown} onChange={(e) => setModal(e.target.value)} />
+                <input inputMode="numeric" disabled={kunciModal} value={modalShown} onChange={(e) => setModal(e.target.value)} />
                 {factor > 0 && Number(f.cost) > 0 && <div className="muted">{rp(Number(f.cost))} per {f.base_unit}</div>}
               </div>
               <div className="field"><label>Harga jual</label>
-                <input required inputMode="numeric" value={u.price} onChange={(e) => setUnit(i, 'price', e.target.value)} />
+                <input required inputMode="numeric" disabled={terkunci(u)} value={u.price} onChange={(e) => setUnit(i, 'price', e.target.value)} />
                 {per != null && factor !== 1 && <div className="muted">= {rp(per)} per {f.base_unit}</div>}
                 {per != null && Number(f.cost) > 0 && <div className="muted">laba {rp(per - Number(f.cost))} per {f.base_unit}</div>}
               </div>
               <div className="unit-del">
-                {f.units.length > 1 && <button type="button" className="secondary" onClick={() => setF({ ...f, units: f.units.filter((_, j) => j !== i) })}>Hapus</button>}
+                {f.units.length > 1 && !terkunci(u) && <button type="button" className="secondary" onClick={() => setF({ ...f, units: f.units.filter((_, j) => j !== i) })}>Hapus</button>}
                 {i === f.units.length - 1 && <button type="button" className="secondary" onClick={() => setF({ ...f, units: [...f.units, { ...blankUnit(), unit: '', factor: '' }] })}>+ Harga</button>}
               </div>
             </div>

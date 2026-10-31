@@ -2,6 +2,7 @@ import { query, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { BadRequest } from '@/lib/sales';
 import { catatPembelian } from '@/lib/purchases';
+import { boleh } from '@/lib/izin';
 
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
@@ -33,7 +34,7 @@ export async function POST(req) {
   if (error) return error;
   const b = await req.json();
   try {
-    const result = await tx((q) => catatPembelian(q, { userId: session.uid, shiftId: session.shiftId, isOwner: session.role === 'owner' }, b));
+    const result = await tx((q) => catatPembelian(q, { userId: session.uid, shiftId: session.shiftId, isAdmin: session.role === 'admin', bolehModal: boleh(session, 'ubah_modal') }, b));
     return Response.json({ ok: true, ...result });
   } catch (e) {
     if (e instanceof BadRequest) return Response.json({ error: e.message }, { status: 400 });

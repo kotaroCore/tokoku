@@ -2,6 +2,7 @@ import { tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { BadRequest } from '@/lib/sales';
 import { ubahStatusPembelian } from '@/lib/purchases';
+import { boleh } from '@/lib/izin';
 
 // Ubah status kiriman: dalam perjalanan -> diterima (harga beli diperbarui) atau hilang.
 // Barang yang sudah diterima tidak bisa ditandai hilang; koreksinya lewat stok.
@@ -13,7 +14,7 @@ export async function PATCH(req, { params }) {
   const b = await req.json();
 
   try {
-    await tx((q) => ubahStatusPembelian(q, id, b.status, { userId: session.uid, isOwner: session.role === 'owner' }));
+    await tx((q) => ubahStatusPembelian(q, id, b.status, { userId: session.uid, shiftId: session.shiftId, isAdmin: session.role === 'admin', bolehModal: boleh(session, 'ubah_modal') }));
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof BadRequest) return Response.json({ error: e.message }, { status: 400 });

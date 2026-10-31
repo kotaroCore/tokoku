@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 
-// Pop-up pesan untuk owner (logout otomatis ditunda, hasil backup otomatis, dll.).
-export default function OwnerNotices() {
+// Pop-up pesan untuk admin (logout otomatis ditunda, hasil backup otomatis, dll.).
+export default function AdminNotices() {
   const [items, setItems] = useState([]);
   const seen = useRef(new Set());
 

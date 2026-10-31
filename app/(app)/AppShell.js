@@ -4,7 +4,8 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import LogoutButton from './LogoutButton';
 import IdleGuard from './IdleGuard';
-import OwnerNotices from './OwnerNotices';
+import AdminNotices from './AdminNotices';
+import { MeContext } from './me';
 
 const ITEMS = [
   { href: '/', icon: '🏠', label: 'Beranda' },
@@ -18,7 +19,7 @@ const ITEMS = [
   { href: '/kulakan', icon: '🛍️', label: 'Kulakan' },
   { href: '/pembelian', icon: '📥', label: 'Pembelian' },
   { href: '/supplier', icon: '🚚', label: 'Supplier' },
-  { href: '/panel', icon: '⚙️', label: 'Panel', owner: true },
+  { href: '/panel', icon: '⚙️', label: 'Panel', admin: true },
 ];
 
 const SIDE_MODES = ['open', 'icon', 'closed'];
@@ -37,7 +38,7 @@ const save = (key, value) => {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 };
 
-export default function AppShell({ name, role, idle, children }) {
+export default function AppShell({ name, role, izin, idle, children }) {
   const path = usePathname();
   const [side, setSide] = useState('open');
   const [order, setOrder] = useState(ITEMS.map((i) => i.href));
@@ -59,11 +60,12 @@ export default function AppShell({ name, role, idle, children }) {
   const changeSide = (m) => { setSide(m); save('tk.side', m); };
   const changeOrder = (o) => { setOrder(o); save('tk.order', o); };
 
-  const allowed = ITEMS.filter((i) => !i.owner || role === 'owner');
+  const allowed = ITEMS.filter((i) => !i.admin || role === 'admin');
   const items = order.map((h) => allowed.find((i) => i.href === h)).filter(Boolean);
   const active = (h) => (h === '/' ? path === '/' : path.startsWith(h));
 
   return (
+    <MeContext.Provider value={{ name, role, izin }}>
     <div className="shell" data-side={side}>
       <aside className="side">
         <div className="side-head">
@@ -90,7 +92,7 @@ export default function AppShell({ name, role, idle, children }) {
       <main>{children}</main>
 
       <IdleGuard enabled={idle.enabled} minutes={idle.minutes} />
-      {role === 'owner' && <OwnerNotices />}
+      {role === 'admin' && <AdminNotices />}
 
       <BottomBar items={items} active={active} onReorder={(hrefs) => changeOrder(hrefs)} />
       <FloatingMenu onOpen={() => setSheet(true)} />
@@ -112,6 +114,7 @@ export default function AppShell({ name, role, idle, children }) {
         </div>
       )}
     </div>
+    </MeContext.Provider>
   );
 }
 

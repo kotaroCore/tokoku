@@ -1,7 +1,7 @@
-import { requireOwnerPage } from '@/lib/auth';
+import { requireRolePage } from '@/lib/auth';
 
-// Panel kontrol khusus owner: staf yang membuka alamat ini dikembalikan ke beranda.
+// Panel kontrol khusus admin: staf yang membuka alamat ini dikembalikan ke beranda.
 export default async function PanelLayout({ children }) {
-  await requireOwnerPage();
+  await requireRolePage('admin');
   return children;
 }

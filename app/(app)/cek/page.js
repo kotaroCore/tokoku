@@ -2,11 +2,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { num, rp } from '@/lib/format';
+import { boleh } from '@/lib/izin';
+import { useMe } from '../me';
 
 const LABEL = { ok: 'Aman', green: 'Mulai menipis', yellow: 'Waspada', red: 'Kritis', none: '-' };
 const DOMPET_LABEL = { laci: 'Laci', receh: 'Receh', kulakan: 'Kulakan' };
 
 export default function Cek() {
+  const bolehModal = boleh(useMe(), 'ubah_modal');
   const [pending, setPending] = useState([]);
   const [stock, setStock] = useState([]);
   const [q, setQ] = useState('');
@@ -270,11 +273,11 @@ export default function Cek() {
         <h2>7. Harga beli yang belum ditangani</h2>
         {!alerts.length ? <p className="muted">Tidak ada.</p> : (
           <>
-            <p className="muted">Owner menutupnya di halaman Barang masuk (Ubah harga atau Tidak perlu).</p>
+            <p className="muted">Admin menutupnya di halaman Barang masuk (Ubah harga atau Tidak perlu).</p>
             {alerts.map((h) => (
               <div key={h.id} style={{ marginBottom: 6 }}>
                 {h.product_name}: {rp(h.lama)} → {rp(h.baru)} per {h.base_unit}
-                {' '}<button className="secondary" onClick={() => tutupAlert(h.id)}>Tidak perlu</button>
+                {bolehModal && <>{' '}<button className="secondary" onClick={() => tutupAlert(h.id)}>{h.modal_diubah ? 'Tidak perlu' : 'Tetap harga beli lama'}</button></>}
               </div>
             ))}
           </>

@@ -9,7 +9,7 @@ export async function POST(req) {
     return Response.json({ error: 'Username atau password salah' }, { status: 401 });
   }
   if (!user.active) {
-    return Response.json({ error: 'Akun dinonaktifkan. Hubungi owner.' }, { status: 403 });
+    return Response.json({ error: 'Akun dinonaktifkan. Hubungi admin.' }, { status: 403 });
   }
   // Shift yang sesinya mati karena diam (logout otomatis) dilanjutkan bila masih hari yang sama.
   const open = await queryOne(

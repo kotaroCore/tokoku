@@ -6,7 +6,7 @@ const MODES = { daily: 'Setiap hari (jam tertentu)', '6h': 'Setiap 6 jam', weekl
 const fmtSize = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : 'belum pernah');
 
-// Pengaturan keamanan (logout otomatis) dan backup database. Khusus owner (panel).
+// Pengaturan keamanan (logout otomatis) dan backup database. Khusus admin (panel).
 export default function Pengaturan() {
   const [data, setData] = useState(null);
   const [s, setS] = useState(null);
@@ -59,7 +59,7 @@ export default function Pengaturan() {
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Keamanan: logout otomatis</h2>
         <p className="muted">
-          Berlaku untuk semua pengguna (owner dan staf). Shift tetap berjalan; hanya sesi login yang berakhir, dan masuk lagi melanjutkan shift yang sama.
+          Berlaku untuk semua pengguna (admin dan staf). Shift tetap berjalan; hanya sesi login yang berakhir, dan masuk lagi melanjutkan shift yang sama.
           Selama kasir mengerjakan transaksi (keranjang terisi), logout ditunda dan Anda diberi tahu lewat pop-up. Sesudah jam tutup, logout tidak lagi ditunda.
         </p>
         <div className="field">

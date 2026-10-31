@@ -2,8 +2,10 @@
 import { useEffect, useState } from 'react';
 import Pengaturan from './Pengaturan';
 import Modal from '../Modal';
+import Link from 'next/link';
+import { IZIN } from '@/lib/izin';
 
-const ROLE = { owner: 'Owner', staff: 'Staf' };
+const ROLE = { admin: 'Admin', staff: 'Staf' };
 const blank = { username: '', name: '', password: '', role: 'staff' };
 
 export default function Panel() {
@@ -47,11 +49,13 @@ export default function Panel() {
     if (name?.trim()) patch({ id: u.id, name }, 'Nama diperbarui.');
   };
   const setRole = (u, role) => patch({ id: u.id, role }, `${u.name} sekarang ${ROLE[role]}.`);
+  const setIzin = (u, izin, beri) => patch({ id: u.id, izin, beri }, `Izin "${IZIN[izin]}" ${beri ? 'diberikan ke' : 'dicabut dari'} ${u.name}.`);
 
   return (
     <>
-      <h1>Panel kontrol <span className="muted" style={{ fontSize: '.9rem' }}>(khusus owner)</span></h1>
-      <p className="muted">Staf bisa memakai semua fitur lain, kecuali panel ini. Pengguna tidak dihapus, hanya dinonaktifkan, supaya riwayat nota dan shift tetap utuh.</p>
+      <h1>Panel kontrol <span className="muted" style={{ fontSize: '.9rem' }}>(khusus admin)</span></h1>
+      <p className="muted">Staf bisa memakai semua fitur lain kecuali panel ini, ubah harga, ubah modal, buang stok rusak, dan laba di laporan. Izin itu bisa diberikan per orang di tabel pengguna. Pengguna tidak dihapus, hanya dinonaktifkan, supaya riwayat nota dan shift tetap utuh. Minimal satu admin aktif harus selalu ada.</p>
+      <p><Link href="/panel/catatan">Catatan perubahan →</Link></p>
 
       <Pengaturan />
 
@@ -73,8 +77,8 @@ export default function Panel() {
               <div className="field"><label>Password awal (min. 6 karakter)</label><input required type="text" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></div>
               <div className="field"><label>Peran</label>
                 <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
-                  <option value="staff">Staf — semua fitur kecuali panel ini</option>
-                  <option value="owner">Owner — termasuk panel ini</option>
+                  <option value="staff">Staf — semua fitur kecuali panel ini dan yang butuh izin</option>
+                  <option value="admin">Admin — semua, termasuk panel ini</option>
                 </select>
               </div>
             </div>
@@ -86,7 +90,7 @@ export default function Panel() {
 
       <div className="card">
         <table>
-          <thead><tr><th>Pengguna</th><th>Peran</th><th>Login terakhir</th><th></th></tr></thead>
+          <thead><tr><th>Pengguna</th><th>Peran</th><th>Izin (staf)</th><th>Login terakhir</th><th></th></tr></thead>
           <tbody>
             {users.map((u) => (
               <tr key={u.id} style={u.active ? undefined : { opacity: 0.5 }}>
@@ -94,8 +98,15 @@ export default function Panel() {
                 <td>
                   <select value={u.role} onChange={(e) => setRole(u, e.target.value)}>
                     <option value="staff">Staf</option>
-                    <option value="owner">Owner</option>
+                    <option value="admin">Admin</option>
                   </select>
+                </td>
+                <td>
+                  {u.role === 'admin' ? <span className="muted">semua</span> : Object.entries(IZIN).map(([k, label]) => (
+                    <label key={k} style={{ display: 'block', whiteSpace: 'nowrap' }}>
+                      <input type="checkbox" style={{ width: 'auto' }} checked={u.izin.includes(k)} onChange={(e) => setIzin(u, k, e.target.checked)} /> {label}
+                    </label>
+                  ))}
                 </td>
                 <td className="muted">{u.last_login ? u.last_login.slice(0, 16).replace('T', ' ') : '-'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>

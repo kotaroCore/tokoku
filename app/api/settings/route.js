@@ -1,19 +1,20 @@
 import { query } from '@/lib/db';
-import { requireOwnerApi } from '@/lib/auth';
+import { requireRoleApi } from '@/lib/auth';
 import { getSettings, saveSettings, IDLE_CHOICES } from '@/lib/settings';
 import { backupStatus, checkDir } from '@/lib/backup';
+import { catatBeda } from '@/lib/catatan';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export async function GET() {
-  const { error } = await requireOwnerApi();
+  const { error } = await requireRoleApi('admin');
   if (error) return error;
   return Response.json({ settings: await getSettings(), backup: await backupStatus(), idleChoices: IDLE_CHOICES });
 }
 
-// Owner menyimpan pengaturan; setiap nilai divalidasi sebelum disimpan.
+// Admin menyimpan pengaturan; setiap nilai divalidasi sebelum disimpan.
 export async function PUT(req) {
-  const { error } = await requireOwnerApi();
+  const { session, error } = await requireRoleApi('admin');
   if (error) return error;
   const b = await req.json();
   const out = {};
@@ -56,7 +57,9 @@ export async function PUT(req) {
     }
     out.backup_dir = dir;
   }
+  const lama = await getSettings();
   await saveSettings(out);
+  await catatBeda(query, { userId: session.uid, objek: 'pengaturan', lama, baru: out });
   // Aktivitas terakhir bisa basi bila fitur sempat mati; mulai hitung dari sekarang agar tak ada yang langsung terlempar.
   if ('idle_enabled' in out || 'idle_minutes' in out) await query('UPDATE shifts SET last_active = NOW() WHERE ended_at IS NULL');
   return Response.json({ ok: true, settings: await getSettings(), backup: await backupStatus() });

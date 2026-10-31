@@ -23,12 +23,14 @@ const { BadRequest, buatNota, lunasiNota, batalkanNota, bayarHutang, tambahSaldo
 const { prosesRetur } = await import('../lib/returns.js');
 const { catatPembelian, ubahStatusPembelian, masukRak } = await import('../lib/purchases.js');
 const { koreksiStok, cekSoreAlokasi } = await import('../lib/stok.js');
+const { ubahProduk } = await import('../lib/produk.js');
+const { Forbidden } = await import('../lib/izin.js');
 const { saldoDompet } = await import('../lib/dompet.js');
 
 after(closeDb);
 
 // ---------- data uji ----------
-const ADMIN = (await query("INSERT INTO users (username, name, password_hash, role) VALUES ('admin', 'Admin', '-', 'owner')")).insertId;
+const ADMIN = (await query("INSERT INTO users (username, name, password_hash, role) VALUES ('admin', 'Admin', '-', 'admin')")).insertId;
 const STAF = (await query("INSERT INTO users (username, name, password_hash, role) VALUES ('staf', 'Staf', '-', 'staff')")).insertId;
 
 let nProduk = 0;
@@ -53,6 +55,9 @@ const stok = async (vid) => (await queryOne('SELECT stock FROM variants WHERE id
 const rusak = async (vid) => (await queryOne('SELECT stok_rusak FROM variants WHERE id = ?', [vid])).stok_rusak;
 const pembeli = (name) => queryOne('SELECT * FROM customers WHERE name = ?', [name]);
 const dompet = (d) => tx((q) => saldoDompet(q, d));
+const sesiAdmin = { uid: ADMIN, role: 'admin', izin: [] };
+const sesiStaf = (izin = []) => ({ uid: STAF, role: 'staff', izin });
+const tanpaIzin = (p) => assert.rejects(p, (e) => e instanceof Forbidden);
 const ditolak = (p, pola) => assert.rejects(p, (e) => e instanceof BadRequest && (!pola || pola.test(e.message)));
 
 // ---------- skenario ----------
@@ -200,7 +205,7 @@ test('Tukar barang: nilai retur menjadi pembayaran nota baru', async () => {
 test('Barang masuk dicicil ke rak: stok bertambah per warna, status hilang tidak menambah stok', async () => {
   const p = await produk({ stok: [0, 0] });
   const [a, b] = p.warna;
-  const sesi = { userId: STAF, isOwner: false };
+  const sesi = { userId: STAF, isAdmin: false, bolehModal: false };
   const beli = await tx((q) => catatPembelian(q, sesi, { status: 'dalam_perjalanan', items: [{ product_id: p.pid, unit_name: 'gross', factor: 144, qty: 1, unit_cost: 72000 }] }));
   const item = await queryOne('SELECT * FROM purchase_items WHERE purchase_id = ?', [beli.id]);
   await ditolak(tx((q) => masukRak(q, beli.id, item.id, [{ variant_id: a, qty: 1 }], STAF)), /belum diterima/);
@@ -246,4 +251,54 @@ test('Stok tidak minus: penjualan, koreksi, dan cek sore menolak stok di bawah n
   assert.equal(await stok(b), 0);
   const { n } = await queryOne('SELECT COUNT(*) AS n FROM variants WHERE stock < 0 OR stok_rusak < 0');
   assert.equal(n, 0);
+});
+
+test('Ubah harga oleh staf: ditolak (403) kecuali staf punya izin admin; perubahan tercatat', async () => {
+  const p = await produk();
+  const units = await query('SELECT * FROM units WHERE product_id = ? ORDER BY id', [p.pid]);
+  const cur = await queryOne('SELECT * FROM products WHERE id = ?', [p.pid]);
+  const body = (ubah = {}) => ({
+    id: p.pid, category: cur.category, name: cur.name, base_unit: cur.base_unit, cost: cur.cost,
+    units: units.map((u) => ({ id: u.id, name: u.name, factor: u.factor, price: u.price })), ...ubah,
+  });
+  const hargaBaru = body({ units: units.map((u) => ({ id: u.id, name: u.name, factor: u.factor, price: u.price + 500 })) });
+  await tanpaIzin(tx((q) => ubahProduk(q, sesiStaf(), hargaBaru)));
+  await tanpaIzin(tx((q) => ubahProduk(q, sesiStaf(['ubah_harga']), body({ cost: 700 }))));
+  // Menghapus satuan juga butuh izin harga.
+  await tanpaIzin(tx((q) => ubahProduk(q, sesiStaf(), body({ units: [units[0]] }))));
+  // Staf tanpa izin tetap boleh menambah satuan baru dan mengganti nama produk.
+  await tx((q) => ubahProduk(q, sesiStaf(), body({ name: cur.name + ' baru', units: [...body().units, { name: 'gross', factor: 144, price: 100000 }] })));
+  assert.equal((await query('SELECT * FROM units WHERE product_id = ?', [p.pid])).length, 3);
+  const gross = await query("SELECT id, name, factor, price FROM units WHERE product_id = ? AND name = 'gross'", [p.pid]);
+  await tx((q) => ubahProduk(q, sesiStaf(['ubah_harga']), { ...hargaBaru, name: cur.name + ' baru', units: [...hargaBaru.units, ...gross] }));
+  assert.equal((await queryOne('SELECT price FROM units WHERE id = ?', [units[0].id])).price, 1500);
+  const semua = await query('SELECT id, name, factor, price FROM units WHERE product_id = ?', [p.pid]);
+  await tx((q) => ubahProduk(q, sesiAdmin, { ...body({ cost: 650 }), name: cur.name + ' baru', units: semua }));
+  assert.equal((await queryOne('SELECT cost FROM products WHERE id = ?', [p.pid])).cost, 650);
+  const log = await query("SELECT * FROM catatan_perubahan WHERE objek = 'satuan' AND objek_id = ?", [units[0].id]);
+  assert.equal(log.length, 1);
+  assert.deepEqual([JSON.parse(log[0].lama).price, JSON.parse(log[0].baru).price], [1000, 1500]);
+  const modal = await queryOne("SELECT * FROM catatan_perubahan WHERE objek = 'produk' AND objek_id = ? AND baru LIKE '%cost%'", [p.pid]);
+  assert.equal(JSON.parse(modal.baru).cost, 650);
+});
+
+test('Barang masuk oleh staf tanpa izin modal: harga beli produk tidak berubah sampai admin memutuskan', async () => {
+  const p = await produk({ cost: 500 });
+  const beli = (sesi) => tx((q) => catatPembelian(q, sesi, { items: [{ product_id: p.pid, unit_name: 'dosin', factor: 12, qty: 1, unit_cost: 7200 }] }));
+  await beli({ userId: STAF, isAdmin: false, bolehModal: false });
+  assert.equal((await queryOne('SELECT cost FROM products WHERE id = ?', [p.pid])).cost, 500);
+  const h = await queryOne('SELECT * FROM harga_alert WHERE product_id = ?', [p.pid]);
+  assert.equal(h.modal_diubah, 0);
+  assert.equal(Number(h.baru), 600);
+  await beli({ userId: STAF, isAdmin: false, bolehModal: true });
+  assert.equal((await queryOne('SELECT cost FROM products WHERE id = ?', [p.pid])).cost, 600);
+});
+
+test('Koreksi stok tercatat di catatan perubahan dengan nilai lama dan baru', async () => {
+  const p = await produk({ stok: [10] });
+  await tx((q) => koreksiStok(q, { variantId: p.warna[0], userId: STAF, delta: -3, note: 'salah hitung' }));
+  const c = await queryOne("SELECT * FROM catatan_perubahan WHERE objek = 'stok' AND objek_id = ?", [p.warna[0]]);
+  assert.deepEqual(JSON.parse(c.lama), { stock: 10 });
+  assert.deepEqual(JSON.parse(c.baru), { stock: 7, alasan: 'salah hitung' });
+  assert.equal(c.user_id, STAF);
 });

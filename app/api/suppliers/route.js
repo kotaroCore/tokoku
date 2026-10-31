@@ -1,5 +1,6 @@
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
+import { catat, catatBeda } from '@/lib/catatan';
 
 const bad = (error) => Response.json({ error }, { status: 400 });
 
@@ -19,32 +20,49 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const { error } = await requireApi();
+  const { session, error } = await requireApi();
   if (error) return error;
   const { error: err, data } = parse(await req.json());
   if (err) return bad(err);
   if (await queryOne('SELECT id FROM suppliers WHERE name = ?', [data.name])) return bad(`Supplier "${data.name}" sudah ada`);
-  const r = await query('INSERT INTO suppliers (name, phone, address, note) VALUES (?, ?, ?, ?)', [data.name, data.phone, data.address, data.note]);
-  return Response.json({ ok: true, id: r.insertId });
+  const id = await tx(async (q) => {
+    const r = await q('INSERT INTO suppliers (name, phone, address, note) VALUES (?, ?, ?, ?)', [data.name, data.phone, data.address, data.note]);
+    await catat(q, { userId: session.uid, objek: 'supplier', objekId: r.insertId, aksi: 'tambah', baru: data });
+    return r.insertId;
+  });
+  return Response.json({ ok: true, id });
 }
 
 export async function PUT(req) {
-  const { error } = await requireApi();
+  const { session, error } = await requireApi();
   if (error) return error;
   const b = await req.json();
   const { error: err, data } = parse(b);
   if (err) return bad(err);
   if (await queryOne('SELECT id FROM suppliers WHERE name = ? AND id <> ?', [data.name, b.id])) return bad(`Supplier "${data.name}" sudah ada`);
-  const r = await query('UPDATE suppliers SET name = ?, phone = ?, address = ?, note = ? WHERE id = ?', [data.name, data.phone, data.address, data.note, b.id]);
-  if (!r.affectedRows) return Response.json({ error: 'Supplier tidak ditemukan' }, { status: 404 });
+  const ada = await tx(async (q) => {
+    const [cur] = await q('SELECT * FROM suppliers WHERE id = ? FOR UPDATE', [b.id]);
+    if (!cur) return false;
+    await q('UPDATE suppliers SET name = ?, phone = ?, address = ?, note = ? WHERE id = ?', [data.name, data.phone, data.address, data.note, cur.id]);
+    await catatBeda(q, { userId: session.uid, objek: 'supplier', objekId: cur.id, lama: cur, baru: data });
+    return true;
+  });
+  if (!ada) return Response.json({ error: 'Supplier tidak ditemukan' }, { status: 404 });
   return Response.json({ ok: true });
 }
 
 export async function PATCH(req) {
-  const { error } = await requireApi();
+  const { session, error } = await requireApi();
   if (error) return error;
   const b = await req.json();
-  const r = await query('UPDATE suppliers SET active = ? WHERE id = ?', [b.active ? 1 : 0, b.id]);
-  if (!r.affectedRows) return Response.json({ error: 'Supplier tidak ditemukan' }, { status: 404 });
+  const ada = await tx(async (q) => {
+    const [cur] = await q('SELECT * FROM suppliers WHERE id = ? FOR UPDATE', [b.id]);
+    if (!cur) return false;
+    const active = b.active ? 1 : 0;
+    await q('UPDATE suppliers SET active = ? WHERE id = ?', [active, cur.id]);
+    await catatBeda(q, { userId: session.uid, objek: 'supplier', objekId: cur.id, aksi: active ? 'aktif' : 'nonaktif', lama: cur, baru: { active } });
+    return true;
+  });
+  if (!ada) return Response.json({ error: 'Supplier tidak ditemukan' }, { status: 404 });
   return Response.json({ ok: true });
 }

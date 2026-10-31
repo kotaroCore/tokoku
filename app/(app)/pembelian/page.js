@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { rp, num } from '@/lib/format';
+import { boleh } from '@/lib/izin';
+import { useMe } from '../me';
 
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const METHOD = { cash: 'Cash', ewallet: 'E-wallet', transfer: 'Transfer' };
@@ -42,8 +44,8 @@ export default function Pembelian() {
   const [photoUrl, setPhotoUrl] = useState('');
 
   const [pending, setPending] = useState([]);
-  const [alerts, setAlerts] = useState([]); // perubahan harga beli yang belum ditutup owner
-  const [isOwner, setIsOwner] = useState(false);
+  const [alerts, setAlerts] = useState([]); // perubahan harga beli yang belum ditutup admin
+  const bolehModal = boleh(useMe(), 'ubah_modal');
   const [status, setStatus] = useState('diterima');
   const [noSupplier, setNoSupplier] = useState('');
   const [caraKirim, setCaraKirim] = useState('');
@@ -73,7 +75,7 @@ export default function Pembelian() {
     fetch('/api/unit-presets').then((r) => r.json()).then(setPresets);
   }, []);
   useEffect(() => { loadList(); }, [date]);
-  useEffect(() => { loadPending(); loadAlerts(); fetch('/api/me').then((r) => r.json()).then((me) => setIsOwner(me.role === 'owner')); }, []);
+  useEffect(() => { loadPending(); loadAlerts(); }, []);
 
   const matches = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -251,13 +253,13 @@ export default function Pembelian() {
           <h2>Perubahan harga beli</h2>
           {alerts.map((h) => (
             <div key={h.id} style={{ marginBottom: 8 }}>
-              <strong>{h.product_name}</strong>: {rp(h.lama)} → {rp(h.baru)} per {h.base_unit} <span className="muted">(dicatat {h.dibuat_oleh_nama})</span>
-              {isOwner ? (
+              <strong>{h.product_name}</strong>: {rp(h.lama)} → {rp(h.baru)} per {h.base_unit} <span className="muted">(dicatat {h.dibuat_oleh_nama}{!h.modal_diubah && ', modal produk belum diubah'})</span>
+              {bolehModal ? (
                 <>
-                  {' '}<a href={`/produk/${h.product_id}`} onClick={() => tutupAlert(h.id, 'ubah')}>Ubah harga sekarang</a>{' '}
-                  <button className="secondary" onClick={() => tutupAlert(h.id, 'tidak_perlu')}>Tidak perlu</button>
+                  {' '}<a href={`/produk/${h.product_id}`} onClick={() => tutupAlert(h.id, 'ubah')}>{h.modal_diubah ? 'Ubah harga jual sekarang' : 'Pakai harga beli baru & tinjau harga jual'}</a>{' '}
+                  <button className="secondary" onClick={() => tutupAlert(h.id, 'tidak_perlu')}>{h.modal_diubah ? 'Tidak perlu' : 'Tetap harga beli lama'}</button>
                 </>
-              ) : <span className="muted"> Menunggu owner.</span>}
+              ) : <span className="muted"> Menunggu admin.</span>}
             </div>
           ))}
         </div>

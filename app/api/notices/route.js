@@ -1,16 +1,16 @@
 import { query } from '@/lib/db';
-import { requireOwnerApi } from '@/lib/auth';
+import { requireRoleApi } from '@/lib/auth';
 
-// Pesan untuk owner yang belum dibaca (ditampilkan sebagai pop-up).
+// Pesan untuk admin yang belum dibaca (ditampilkan sebagai pop-up).
 export async function GET() {
-  const { error } = await requireOwnerApi();
+  const { error } = await requireRoleApi('admin');
   if (error) return error;
   const rows = await query('SELECT id, kind, message, created_at FROM notices WHERE seen = 0 ORDER BY id DESC LIMIT 20');
   return Response.json(rows);
 }
 
 export async function POST(req) {
-  const { error } = await requireOwnerApi();
+  const { error } = await requireRoleApi('admin');
   if (error) return error;
   const { ids } = await req.json();
   const clean = Array.isArray(ids) ? ids.map(Number).filter(Number.isInteger) : [];

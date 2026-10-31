@@ -5,5 +5,5 @@ import { getSettings, idleConfig } from '@/lib/settings';
 export default async function AppLayout({ children }) {
   const s = await requirePage();
   const idle = idleConfig(await getSettings());
-  return <AppShell name={s.name} role={s.role} idle={{ enabled: idle.enabled, minutes: idle.minutes }}>{children}</AppShell>;
+  return <AppShell name={s.name} role={s.role} izin={s.izin} idle={{ enabled: idle.enabled, minutes: idle.minutes }}>{children}</AppShell>;
 }

@@ -2,6 +2,7 @@ import { query, queryOne, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { bayarHutang } from '@/lib/sales';
 import { catatDompet } from '@/lib/dompet';
+import { catatBeda } from '@/lib/catatan';
 
 // Pembeli yang masih berhutang, beserta nota yang belum lunas (nomor, tanggal, sisa).
 export async function GET() {
@@ -40,15 +41,17 @@ export async function POST(req) {
   return Response.json({ ok: true });
 }
 
-// Perbarui kontak pembeli (nomor WA / alamat), atau tandai pembeli dikenal (tier B).
+// Perbarui kontak pembeli (nomor WA / alamat), atau tandai pembeli dikenal (tier B). Tercatat di catatan perubahan.
 export async function PATCH(req) {
-  const { error } = await requireApi();
+  const { session, error } = await requireApi();
   if (error) return error;
   const b = await req.json();
-  if (b.dikenal !== undefined) {
-    await query('UPDATE customers SET dikenal = ? WHERE id = ?', [b.dikenal ? 1 : 0, b.id]);
-  } else {
-    await query('UPDATE customers SET phone = ?, address = ? WHERE id = ?', [b.phone || null, b.address || null, b.id]);
-  }
+  await tx(async (q) => {
+    const [c] = await q('SELECT * FROM customers WHERE id = ? FOR UPDATE', [b.id]);
+    if (!c) return;
+    const baru = b.dikenal !== undefined ? { dikenal: b.dikenal ? 1 : 0 } : { phone: b.phone || null, address: b.address || null };
+    await q(`UPDATE customers SET ${Object.keys(baru).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, [...Object.values(baru), c.id]);
+    await catatBeda(q, { userId: session.uid, objek: 'pembeli', objekId: c.id, lama: c, baru });
+  });
   return Response.json({ ok: true });
 }

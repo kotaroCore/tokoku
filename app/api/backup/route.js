@@ -1,9 +1,9 @@
-import { requireOwnerApi } from '@/lib/auth';
+import { requireRoleApi } from '@/lib/auth';
 import { runBackup } from '@/lib/backup';
 
-// Backup manual (khusus owner). Konfirmasi ditampilkan di browser sebelum memanggil ini.
+// Backup manual (khusus admin). Konfirmasi ditampilkan di browser sebelum memanggil ini.
 export async function POST() {
-  const { error } = await requireOwnerApi();
+  const { error } = await requireRoleApi('admin');
   if (error) return error;
   try {
     const r = await runBackup('manual');
