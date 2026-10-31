@@ -1,7 +1,7 @@
 import { query, queryOne, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
-
-class BadRequest extends Error {}
+import { BadRequest } from '@/lib/sales';
+import { koreksiStok } from '@/lib/stok';
 
 // Penyesuaian stok (delta dalam satuan dasar) dan/atau pengaturan level reorder.
 export async function PATCH(req) {
@@ -13,16 +13,8 @@ export async function PATCH(req) {
   try {
     await tx(async (q) => {
       const delta = Number(b.delta) || 0;
-      if (delta) {
-        // Koreksi stok wajib alasan, dan stok tidak boleh minus.
-        if (!(b.note || '').trim()) throw new BadRequest('Alasan koreksi stok wajib diisi');
-        const [{ stock }] = await q('SELECT stock FROM variants WHERE id = ? FOR UPDATE', [v.id]);
-        if (stock + delta < -1e-9) throw new BadRequest(`Stok tidak boleh minus (sisa ${stock})`);
-        await q('UPDATE variants SET stock = stock + ? WHERE id = ?', [delta, v.id]);
-        await q('INSERT INTO stock_adjustments (variant_id, user_id, delta, note) VALUES (?, ?, ?, ?)', [
-          v.id, session.uid, delta, b.note.trim(),
-        ]);
-      }
+      // Koreksi stok wajib alasan, dan stok tidak boleh minus.
+      if (delta) await koreksiStok(q, { variantId: v.id, userId: session.uid, delta, note: b.note });
       if (b.level_green != null) {
         await q('UPDATE variants SET level_green = ?, level_yellow = ?, level_red = ? WHERE id = ?', [
           Number(b.level_green) || 0, Number(b.level_yellow) || 0, Number(b.level_red) || 0, v.id,

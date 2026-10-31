@@ -2,7 +2,7 @@
 
 > Dokumen ini ditulis dari sisi orang-orang yang bekerja di toko setiap hari: pemilik, admin, dan staf penjualan. Isinya menjelaskan apa yang dibutuhkan tim, apa yang sudah ada di aplikasi, dan apa yang belum.
 >
-> Ruang lingkup teknis dan aturan bisnis lengkap ada di `RUANG_LINGKUP_MVP_TAHAP1.md` (folder induk) dan rancangan tabel di `db/schema_fase1.sql`. Dokumen ini adalah versi yang dibaca tim.
+> Ruang lingkup teknis dan aturan bisnis lengkap ada di `RUANG_LINGKUP_MVP_TAHAP1.md` (folder induk) Skema yang dipakai aplikasi ada di `lib/db.js` (`SCHEMA` dan `MIGRATIONS`); rancangan tabel awal sudah diarsipkan di `docs/arsip/`. Dokumen ini adalah versi yang dibaca tim.
 >
 > Status: draft untuk dibahas bersama.
 
@@ -65,9 +65,9 @@ Status: **Ada** = sudah berjalan, **Sebagian** = ada tapi belum sesuai rencana, 
 | Produk dengan varian warna, stok per warna | Ada | |
 | Harga jual per satuan (biji, dosin, gross, meter, paket) | Ada | |
 | Peringatan stok tiga level (hijau, kuning, merah) | Ada | Batas khusus untuk warna laris belum ada |
-| Stok tidak boleh minus | Sebagian | Dijaga di cek sore, perlu diuji untuk semua jalur |
-| Koreksi stok dengan alasan wajib | Sebagian | Alasan masih opsional |
-| Riwayat perubahan stok | Sebagian | Tercatat untuk koreksi dan cek sore, belum untuk semua jenis perubahan |
+| Stok tidak boleh minus | Ada | Dijaga di penjualan, koreksi, dan cek sore; diuji di `npm run uji` |
+| Koreksi stok dengan alasan wajib | Ada | |
+| Riwayat perubahan stok | Ada | Penjualan, retur, masuk rak, koreksi, dan cek sore tercatat di `stock_adjustments` |
 | Input stok awal bertahap per kategori | Belum | |
 
 ### 4.2 Penjualan (nota)
@@ -79,11 +79,11 @@ Status: **Ada** = sudah berjalan, **Sebagian** = ada tapi belum sesuai rencana, 
 | Warna boleh kosong, diisi di cek sore | Ada | |
 | Split payment (campuran cash, e-wallet, transfer, hutang) | Ada | |
 | Bayar hutang lama dan belanja baru sekaligus | Ada | |
-| Nomor nota otomatis `NT-YYYYMMDD-####` | Belum | |
-| Status nota draft, lunas, batal | Belum | Nota langsung tersimpan dan stok langsung berkurang |
-| Pembayaran e-wallet dan transfer menunggu konfirmasi, peringatan 60 menit | Belum | |
-| Pembayaran QRIS, GoPay, ShopeePay dipisah | Belum | Saat ini hanya satu kolom e-wallet |
-| Pembulatan total manual oleh staf | Belum | Saat ini pembulatan dilakukan otomatis per baris |
+| Nomor nota otomatis `NT-YYYYMMDD-####` | Ada | Berurutan per hari, aman untuk dua kasir |
+| Status nota draft, lunas, batal | Ada | Stok berkurang saat lunas |
+| Pembayaran e-wallet dan transfer menunggu konfirmasi, peringatan 60 menit | Ada | |
+| Pembayaran QRIS, GoPay, ShopeePay dipisah | Ada | Satu kolom e-wallet dengan keterangan wajib |
+| Pembulatan total manual oleh staf | Ada | Selisih dicatat di nota |
 | Harga disalin ke nota saat transaksi | Ada | |
 | Diskon dengan jenis, nilai, dan pemberi | Sebagian | Hanya persentase |
 
@@ -93,13 +93,13 @@ Status: **Ada** = sudah berjalan, **Sebagian** = ada tapi belum sesuai rencana, 
 |---|---|---|
 | Nama pembeli wajib untuk hutang | Ada | |
 | Peringatan nama mirip untuk mencegah data ganda | Sebagian | Ada saran nama, tapi belum mencari nama mirip secara menyeluruh |
-| Tiga tingkat pembeli (V, A, B) | Belum | Batas Rp 200.000 ada, belum dibedakan per tingkat |
-| Batas Rp 100.000 hutang lama harus dilunasi dulu | Belum | |
-| Penanda "dikenal" oleh staf | Belum | |
-| Hutang per nota, pelunasan urut nota tertua | Belum | Saat ini hanya satu total per pembeli |
-| Daftar pembeli yang berhutang | Ada | Belum menampilkan nomor nota |
+| Tiga tingkat pembeli (V, A, B) | Ada | Tanpa nama tidak boleh hutang; A maks Rp 200.000; B maks Rp 500.000 |
+| Batas Rp 100.000 hutang lama harus dilunasi dulu | Ada | Untuk tier A |
+| Penanda "dikenal" oleh staf | Ada | |
+| Hutang per nota, pelunasan urut nota tertua | Ada | |
+| Daftar pembeli yang berhutang | Ada | Dengan nomor nota dan sisa per nota |
 | Pengingat hutang lewat WhatsApp | Ada | Teks pesan belum bisa diatur |
-| Saldo titipan | Belum | |
+| Saldo titipan | Ada | |
 
 ### 4.4 Retur
 
@@ -108,10 +108,10 @@ Status: **Ada** = sudah berjalan, **Sebagian** = ada tapi belum sesuai rencana, 
 | Retur mengacu ke nota asal | Ada | |
 | Jumlah retur tidak boleh melebihi yang dibeli | Ada | |
 | Nilai retur dibagi ke hutang dan uang kembali | Ada | |
-| Batas 7 hari dan aturan pengecualian dengan catatan wajib | Belum | |
-| Barang cacat masuk stok rusak | Belum | Saat ini hanya kotak "kembalikan ke stok" |
-| Tukar barang sebagai nota baru | Belum | |
-| Nilai retur dibagi ke saldo titipan | Belum | |
+| Batas 7 hari dan aturan pengecualian dengan catatan wajib | Ada | |
+| Barang cacat masuk stok rusak | Ada | |
+| Tukar barang sebagai nota baru | Ada | |
+| Nilai retur dibagi ke saldo titipan | Ada | |
 
 ### 4.5 Barang masuk (pembelian dari supplier)
 
@@ -119,17 +119,17 @@ Status: **Ada** = sudah berjalan, **Sebagian** = ada tapi belum sesuai rencana, 
 |---|---|---|
 | Catat supplier dan tanggal | Ada | |
 | Masukkan ke rak per warna, stok bertambah | Ada | |
-| Status dalam perjalanan, diterima, hilang | Belum | Pembelian dianggap langsung lunas |
-| Nomor nota supplier dan cara kirim | Belum | Hanya catatan bebas |
-| Harga beli terakhir diperbarui otomatis | Belum | |
-| Peringatan saat harga beli berubah | Belum | |
-| Pembayaran cash ke supplier tercatat sebagai uang keluar | Belum | Belum ada pencatatan dompet |
+| Status dalam perjalanan, diterima, hilang | Ada | Pembelian tetap langsung lunas |
+| Nomor nota supplier dan cara kirim | Ada | |
+| Harga beli terakhir diperbarui otomatis | Ada | |
+| Peringatan saat harga beli berubah | Ada | |
+| Pembayaran cash ke supplier tercatat sebagai uang keluar | Ada | Dari dompet kulakan |
 
 ### 4.6 Stok rusak
 
 | Kebutuhan | Status | Catatan |
 |---|---|---|
-| Stok rusak terpisah dari stok jual | Belum | |
+| Stok rusak terpisah dari stok jual | Ada | |
 | Jual stok rusak dengan diskon atau hapus | Belum | |
 | Barang cacat dikembalikan ke supplier | Belum | |
 
@@ -137,11 +137,11 @@ Status: **Ada** = sudah berjalan, **Sebagian** = ada tapi belum sesuai rencana, 
 
 | Kebutuhan | Status | Catatan |
 |---|---|---|
-| Tiga dompet: laci, receh, kulaan | Belum | |
-| Pencatatan uang keluar (jamu, GoSend, bayar supplier) | Belum | |
+| Tiga dompet: laci, receh, kulakan | Ada | |
+| Pencatatan uang keluar (jamu, GoSend, bayar supplier) | Ada | |
 | Cek sore: isi warna | Ada | |
-| Cek sore: nota draft, lembaran uang, e-wallet dicocokkan, daftar hutang | Belum | |
-| Hitung laci seminggu sekali, dengan selisih | Belum | |
+| Cek sore: nota draft, lembaran uang, e-wallet dicocokkan, daftar hutang | Ada | |
+| Hitung laci seminggu sekali, dengan selisih | Ada | |
 
 ### 4.8 Laporan
 
@@ -200,8 +200,8 @@ Tahap 1 dianggap selesai jika tim bisa:
 7. Login dengan akun masing-masing (ibu, admin, staf).
 8. Menjalankan uji lunas, batal, retur, dan barang masuk tanpa data yang rusak.
 
-Dari daftar ini, poin 1, 2 (sebagian), 4, 5 (sebagian), dan 7 sudah bisa dipakai. Poin 3, 6, dan 8 belum lengkap.
+Dari daftar ini, poin 1, 2, 4, 5, 7, dan 8 sudah bisa dipakai (poin 8 lewat `npm run uji`). Poin 6 dikerjakan di M4 tahap 2. Poin 3 adalah pekerjaan di toko, dibantu input stok awal (M5) dan opname per warna (M6).
 
 ---
 
-*Dokumen ini ditulis dari kode yang ada per tanggal 28 Oktober 2026. Status dapat berubah seiring pengembangan.*
+*Dokumen ini ditulis dari kode yang ada per tanggal 28 Oktober 2026 dan statusnya diperbarui 31 Oktober 2026 (M0 tahap 2). Pekerjaan lanjutan ada di `SPESIFIKASI_TAHAP2_RESMI.md`.*

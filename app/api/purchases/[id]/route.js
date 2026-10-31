@@ -1,7 +1,7 @@
 import { tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { BadRequest } from '@/lib/sales';
-import { terimaBarang } from '@/lib/purchases';
+import { ubahStatusPembelian } from '@/lib/purchases';
 
 // Ubah status kiriman: dalam perjalanan -> diterima (harga beli diperbarui) atau hilang.
 // Barang yang sudah diterima tidak bisa ditandai hilang; koreksinya lewat stok.
@@ -13,19 +13,7 @@ export async function PATCH(req, { params }) {
   const b = await req.json();
 
   try {
-    await tx(async (q) => {
-      const [pu] = await q('SELECT * FROM purchases WHERE id = ? FOR UPDATE', [id]);
-      if (!pu) throw new BadRequest('Pembelian tidak ditemukan');
-      if (pu.status !== 'dalam_perjalanan') throw new BadRequest(`Status sudah ${pu.status}`);
-      if (b.status === 'diterima') {
-        await q("UPDATE purchases SET status = 'diterima' WHERE id = ?", [id]);
-        await terimaBarang(q, id, session.uid, session.role === 'owner');
-      } else if (b.status === 'hilang') {
-        await q("UPDATE purchases SET status = 'hilang' WHERE id = ?", [id]);
-      } else {
-        throw new BadRequest('Status tidak dikenal');
-      }
-    });
+    await tx((q) => ubahStatusPembelian(q, id, b.status, { userId: session.uid, isOwner: session.role === 'owner' }));
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof BadRequest) return Response.json({ error: e.message }, { status: 400 });

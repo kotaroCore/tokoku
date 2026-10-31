@@ -1,7 +1,7 @@
 import { query, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
-
-class BadRequest extends Error {}
+import { BadRequest } from '@/lib/sales';
+import { cekSoreAlokasi } from '@/lib/stok';
 
 // Barang terjual yang warnanya diambil otomatis dan belum dicek, per produk.
 export async function GET() {
@@ -39,36 +39,8 @@ export async function POST(req) {
   const { session, error } = await requireApi();
   if (error) return error;
   const b = await req.json();
-  const alloc = (b.allocations || []).map((a) => ({ variant_id: Number(a.variant_id), qty: Number(a.qty) })).filter((a) => a.qty > 0);
   try {
-    await tx(async (q) => {
-      const items = await q(
-        `SELECT i.* FROM sale_items i JOIN sales s ON s.id = i.sale_id AND s.status = 'lunas'
-         JOIN variants v ON v.id = i.variant_id
-         WHERE i.auto_pick = 1 AND i.auto_resolved = 0 AND v.product_id = ? FOR UPDATE`,
-        [b.product_id]
-      );
-      if (!items.length) throw new BadRequest('Tidak ada barang yang perlu dicek untuk produk ini');
-      const total = items.reduce((s, i) => s + i.qty * i.factor, 0);
-      const sum = alloc.reduce((s, a) => s + a.qty, 0);
-      if (Math.abs(sum - total) > 1e-6) throw new BadRequest(`Jumlah per warna (${sum}) harus sama dengan total terjual (${total})`);
-      for (const i of items) {
-        await q('UPDATE variants SET stock = stock + ? WHERE id = ?', [i.qty * i.factor, i.variant_id]);
-        await q('INSERT INTO stock_adjustments (variant_id, user_id, delta, note) VALUES (?, ?, ?, ?)', [
-          i.variant_id, session.uid, i.qty * i.factor, `Cek sore: kembalikan stok otomatis nota #${i.sale_id}`,
-        ]);
-      }
-      for (const a of alloc) {
-        const [v] = await q('SELECT * FROM variants WHERE id = ? AND product_id = ? FOR UPDATE', [a.variant_id, b.product_id]);
-        if (!v || !v.active) throw new BadRequest('Warna tidak valid');
-        if (v.stock < a.qty - 1e-9) throw new BadRequest(`Stok ${v.color || 'tanpa warna'} tidak cukup (sisa ${v.stock})`);
-        await q('UPDATE variants SET stock = stock - ? WHERE id = ?', [a.qty, v.id]);
-        await q('INSERT INTO stock_adjustments (variant_id, user_id, delta, note) VALUES (?, ?, ?, ?)', [
-          v.id, session.uid, -a.qty, 'Cek sore: warna sebenarnya terjual',
-        ]);
-      }
-      await q('UPDATE sale_items SET auto_resolved = 1 WHERE id IN (?)', [items.map((i) => i.id)]);
-    });
+    await tx((q) => cekSoreAlokasi(q, { productId: b.product_id, userId: session.uid, allocations: b.allocations }));
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof BadRequest) return Response.json({ error: e.message }, { status: 400 });

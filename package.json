@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "seed": "node --env-file-if-exists=.env.local scripts/seed.mjs",
-    "restore": "node --env-file-if-exists=.env.local scripts/restore.mjs"
+    "restore": "node --env-file-if-exists=.env.local scripts/restore.mjs",
+    "uji": "node --env-file-if-exists=.env.local --import ./scripts/alias.mjs scripts/uji.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

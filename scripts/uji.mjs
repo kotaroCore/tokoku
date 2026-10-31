@@ -1,0 +1,249 @@
+// Uji otomatis logika toko terhadap database uji terpisah (dibuat ulang setiap kali jalan).
+// Pakai: npm run uji   (database: tokoku_uji, atau DB_NAME lain yang berakhiran _uji)
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import mysql from 'mysql2/promise';
+
+process.env.DB_NAME = process.env.DB_NAME_UJI || 'tokoku_uji';
+const DB = process.env.DB_NAME;
+if (!/_uji$/.test(DB)) throw new Error(`Database uji harus berakhiran _uji (sekarang ${DB}); database toko tidak boleh dikosongkan.`);
+
+// Kosongkan database uji sebelum lib/db.js membuat skema.
+const admin = await mysql.createConnection({
+  host: process.env.DB_HOST || '127.0.0.1',
+  port: Number(process.env.DB_PORT) || 3306,
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+});
+await admin.query(`DROP DATABASE IF EXISTS \`${DB}\``);
+await admin.end();
+
+const { query, queryOne, tx, closeDb } = await import('../lib/db.js');
+const { BadRequest, buatNota, lunasiNota, batalkanNota, bayarHutang, tambahSaldo } = await import('../lib/sales.js');
+const { prosesRetur } = await import('../lib/returns.js');
+const { catatPembelian, ubahStatusPembelian, masukRak } = await import('../lib/purchases.js');
+const { koreksiStok, cekSoreAlokasi } = await import('../lib/stok.js');
+const { saldoDompet } = await import('../lib/dompet.js');
+
+after(closeDb);
+
+// ---------- data uji ----------
+const ADMIN = (await query("INSERT INTO users (username, name, password_hash, role) VALUES ('admin', 'Admin', '-', 'owner')")).insertId;
+const STAF = (await query("INSERT INTO users (username, name, password_hash, role) VALUES ('staf', 'Staf', '-', 'staff')")).insertId;
+
+let nProduk = 0;
+// Produk dengan satuan biji (Rp 1.000) dan dosin (12 biji, Rp 10.000), dan beberapa warna dengan stok awal.
+async function produk({ stok = [100], cost = 500, category = 'BENANG' } = {}) {
+  const pid = (await query('INSERT INTO products (category, name, base_unit, cost) VALUES (?, ?, ?, ?)', [category, `Produk uji ${++nProduk}`, 'biji', cost])).insertId;
+  const biji = (await query("INSERT INTO units (product_id, name, factor, price) VALUES (?, 'biji', 1, 1000)", [pid])).insertId;
+  const dosin = (await query("INSERT INTO units (product_id, name, factor, price) VALUES (?, 'dosin', 12, 10000)", [pid])).insertId;
+  const warna = [];
+  for (const [i, s] of stok.entries()) {
+    warna.push((await query('INSERT INTO variants (product_id, color, stock) VALUES (?, ?, ?)', [pid, `W${i + 1}`, s])).insertId);
+  }
+  return { pid, biji, dosin, warna };
+}
+
+const nota = (b) => tx((q) => buatNota(q, {
+  userId: STAF, shiftId: null, channel: 'retail', paidCash: 0, paidEwallet: 0, paidTransfer: 0, payDebt: 0, ...b,
+}));
+const lunasi = (id) => tx((q) => lunasiNota(q, id, STAF));
+const notaLunas = async (b) => { const n = await nota(b); await lunasi(n.saleId); return n; };
+const stok = async (vid) => (await queryOne('SELECT stock FROM variants WHERE id = ?', [vid])).stock;
+const rusak = async (vid) => (await queryOne('SELECT stok_rusak FROM variants WHERE id = ?', [vid])).stok_rusak;
+const pembeli = (name) => queryOne('SELECT * FROM customers WHERE name = ?', [name]);
+const dompet = (d) => tx((q) => saldoDompet(q, d));
+const ditolak = (p, pola) => assert.rejects(p, (e) => e instanceof BadRequest && (!pola || pola.test(e.message)));
+
+// ---------- skenario ----------
+
+test('Nota draf lalu lunas: stok berkurang hanya saat lunas, nomor berurutan per hari', async () => {
+  const p = await produk({ stok: [50] });
+  const a = await nota({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 5 }], paidCash: 5000 });
+  assert.equal(await stok(p.warna[0]), 50);
+  const b = await nota({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], paidCash: 1000 });
+  assert.match(a.nomor, /^NT-\d{8}-\d{4}$/);
+  assert.equal(Number(b.nomor.slice(-4)), Number(a.nomor.slice(-4)) + 1);
+  assert.equal(a.nomor.slice(0, 11), b.nomor.slice(0, 11));
+  await lunasi(a.saleId);
+  assert.equal(await stok(p.warna[0]), 45);
+  const s = await queryOne('SELECT status FROM sales WHERE id = ?', [a.saleId]);
+  assert.equal(s.status, 'lunas');
+  await ditolak(lunasi(a.saleId), /sudah lunas/);
+});
+
+test('Nota dibatalkan: stok, hutang, saldo, dan dompet kembali seperti semula', async () => {
+  const p = await produk({ stok: [30] });
+  await tx((q) => q("INSERT INTO customers (name, dikenal) VALUES ('Batal Uji', 1)"));
+  const c0 = await pembeli('Batal Uji');
+  await tx((q) => tambahSaldo(q, c0.id, 2000, STAF, { jenis: 'titip' }));
+  const awal = { stok: await stok(p.warna[0]), c: await pembeli('Batal Uji'), laci: await dompet('laci'), receh: await dompet('receh') };
+  const n = await nota({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 10 }], customerName: 'Batal Uji', paidCash: 3000, paidSaldo: 2000 });
+  await tx((q) => batalkanNota(q, n.saleId, STAF, 'uji batal'));
+  const c = await pembeli('Batal Uji');
+  assert.equal(await stok(p.warna[0]), awal.stok);
+  assert.equal(c.total_hutang, awal.c.total_hutang);
+  assert.equal(c.saldo, awal.c.saldo);
+  assert.equal(await dompet('laci'), awal.laci);
+  assert.equal(await dompet('receh'), awal.receh);
+  assert.equal((await queryOne('SELECT status FROM sales WHERE id = ?', [n.saleId])).status, 'batal');
+  // Nota lunas tidak bisa dibatalkan (koreksinya lewat retur), dan alasan wajib.
+  const l = await notaLunas({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], paidCash: 1000 });
+  await ditolak(tx((q) => batalkanNota(q, l.saleId, STAF, 'coba')), /draf/);
+  const d = await nota({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], paidCash: 1000 });
+  await ditolak(tx((q) => batalkanNota(q, d.saleId, STAF, '  ')), /Alasan/);
+});
+
+test('Dua kasir menyimpan bersamaan: nomor nota tidak kembar', async () => {
+  const p = await produk({ stok: [100] });
+  const hasil = await Promise.all(Array.from({ length: 6 }, () => nota({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], paidCash: 1000 })));
+  assert.equal(new Set(hasil.map((h) => h.nomor)).size, 6);
+});
+
+test('Pembayaran campuran: cash, e-wallet, transfer, saldo, dan hutang berjumlah sama dengan tagihan', async () => {
+  const p = await produk({ stok: [100] });
+  await tx((q) => q("INSERT INTO customers (name) VALUES ('Campur Uji')"));
+  const c = await pembeli('Campur Uji');
+  await tx((q) => tambahSaldo(q, c.id, 1500, STAF, { jenis: 'titip' }));
+  const laci = await dompet('laci');
+  const n = await nota({
+    items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 10 }], customerName: 'Campur Uji',
+    paidCash: 2000, paidEwallet: 2000, paidEwalletKet: 'QRIS', paidTransfer: 2000, paidSaldo: 1500, pembulatan: -500,
+  });
+  assert.equal(n.menunggu, true); // e-wallet / transfer menunggu konfirmasi, nota tetap draf
+  await lunasi(n.saleId);
+  const s = await queryOne('SELECT * FROM sales WHERE id = ?', [n.saleId]);
+  assert.equal(s.paid_cash + s.paid_ewallet + s.paid_transfer + s.paid_saldo + s.paid_tukar + s.hutang, s.total + s.pembulatan);
+  assert.equal(s.hutang, 2000);
+  const c2 = await pembeli('Campur Uji');
+  assert.equal(c2.saldo, 0);
+  assert.equal(c2.total_hutang, 2000);
+  assert.equal(await dompet('laci'), laci + 2000);
+  // E-wallet tanpa keterangan ditolak.
+  await ditolak(nota({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], paidEwallet: 1000 }), /keterangan/);
+});
+
+test('Hutang tier A dan B: batas Rp 200.000 dan Rp 500.000, hutang lama tier A', async () => {
+  const p = await produk({ stok: [5000] });
+  const item = (qty) => [{ variant_id: p.warna[0], unit_id: p.biji, qty }];
+  // Tanpa nama tidak boleh berhutang.
+  await ditolak(nota({ items: item(1) }), /Nama pembeli/);
+  // Tier A: maks Rp 200.000 per nota.
+  await ditolak(nota({ items: item(201), customerName: 'Tier A Uji' }), /200\.000/);
+  await notaLunas({ items: item(150), customerName: 'Tier A Uji' });
+  // Hutang lama Rp 150.000 (>= Rp 100.000): hutang baru ditolak sampai dilunasi.
+  await ditolak(nota({ items: item(1), customerName: 'Tier A Uji' }), /dilunasi dulu/);
+  // Bayar hutang lama sampai sisa < Rp 100.000 di nota yang sama: boleh.
+  await notaLunas({ items: item(10), customerName: 'Tier A Uji', paidCash: 60000, payDebt: 60000 });
+  assert.equal((await pembeli('Tier A Uji')).total_hutang, 100000);
+  // Tier B (dikenal): maks Rp 500.000 per nota, hutang lama tidak menghalangi.
+  await query("UPDATE customers SET dikenal = 1 WHERE name = 'Tier A Uji'");
+  await ditolak(nota({ items: item(501), customerName: 'Tier A Uji' }), /500\.000/);
+  await notaLunas({ items: item(500), customerName: 'Tier A Uji' });
+  assert.equal((await pembeli('Tier A Uji')).total_hutang, 600000);
+});
+
+test('Bayar hutang lama: dibagi ke nota tertua dulu', async () => {
+  const p = await produk({ stok: [100] });
+  await tx((q) => q("INSERT INTO customers (name, dikenal) VALUES ('Urut Uji', 1)"));
+  const ids = [];
+  for (const qty of [1, 2, 3]) ids.push((await notaLunas({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty }], customerName: 'Urut Uji' })).saleId);
+  const c = await pembeli('Urut Uji');
+  assert.equal(c.total_hutang, 6000);
+  await tx((q) => bayarHutang(q, c.id, 2500, STAF));
+  const rows = await query('SELECT id, hutang_terbayar FROM sales WHERE id IN (?) ORDER BY id', [ids]);
+  assert.deepEqual(rows.map((r) => r.hutang_terbayar), [1000, 1500, 0]);
+  assert.equal((await pembeli('Urut Uji')).total_hutang, 3500);
+});
+
+test('Retur sebagian: tidak melebihi yang dibeli, potong hutang dulu, barang cacat ke stok rusak', async () => {
+  const p = await produk({ stok: [100] });
+  const v = p.warna[0];
+  const n = await notaLunas({ items: [{ variant_id: v, unit_id: p.biji, qty: 10 }], customerName: 'Retur Uji', paidCash: 4000 });
+  const it = await queryOne('SELECT id FROM sale_items WHERE sale_id = ?', [n.saleId]);
+  const retur = (qty, kondisi = 'baik') => tx((q) => prosesRetur(q, { userId: STAF }, { sale_id: n.saleId, items: [{ sale_item_id: it.id, qty, kondisi }] }));
+  const r1 = await retur(3);
+  assert.equal(r1.total, 3000);
+  assert.equal(r1.hutangReduced, 3000);
+  assert.equal(r1.refund, 0);
+  assert.equal(await stok(v), 93);
+  await ditolak(retur(8), /melebihi/);
+  const r2 = await retur(2, 'cacat');
+  assert.equal(r2.hutangReduced, 2000);
+  assert.equal(await stok(v), 93);
+  assert.equal(await rusak(v), 2);
+  const laci = await dompet('laci');
+  const r3 = await retur(5);
+  assert.equal(r3.hutangReduced, 1000);
+  assert.equal(r3.refund, 4000);
+  assert.equal(await dompet('laci'), laci - 4000);
+  assert.equal((await pembeli('Retur Uji')).total_hutang, 0);
+  await ditolak(retur(1), /melebihi/);
+});
+
+test('Tukar barang: nilai retur menjadi pembayaran nota baru', async () => {
+  const p = await produk({ stok: [100] });
+  const v = p.warna[0];
+  const n = await notaLunas({ items: [{ variant_id: v, unit_id: p.biji, qty: 3 }], paidCash: 3000 });
+  const it = await queryOne('SELECT id FROM sale_items WHERE sale_id = ?', [n.saleId]);
+  const r = await tx((q) => prosesRetur(q, { userId: STAF }, {
+    sale_id: n.saleId, items: [{ sale_item_id: it.id, qty: 2 }], tukar: [{ variant_id: v, unit_id: p.dosin, qty: 1 }], paid_cash: 8000,
+  }));
+  assert.equal(r.refund, 0);
+  const baru = await queryOne('SELECT * FROM sales WHERE id = ?', [r.tukarNota.saleId]);
+  assert.equal(baru.status, 'lunas');
+  assert.equal(baru.paid_tukar, 2000);
+  assert.equal(baru.paid_tukar + baru.paid_cash, baru.total);
+  assert.equal(await stok(v), 100 - 3 + 2 - 12);
+});
+
+test('Barang masuk dicicil ke rak: stok bertambah per warna, status hilang tidak menambah stok', async () => {
+  const p = await produk({ stok: [0, 0] });
+  const [a, b] = p.warna;
+  const sesi = { userId: STAF, isOwner: false };
+  const beli = await tx((q) => catatPembelian(q, sesi, { status: 'dalam_perjalanan', items: [{ product_id: p.pid, unit_name: 'gross', factor: 144, qty: 1, unit_cost: 72000 }] }));
+  const item = await queryOne('SELECT * FROM purchase_items WHERE purchase_id = ?', [beli.id]);
+  await ditolak(tx((q) => masukRak(q, beli.id, item.id, [{ variant_id: a, qty: 1 }], STAF)), /belum diterima/);
+  await tx((q) => ubahStatusPembelian(q, beli.id, 'diterima', sesi));
+  await tx((q) => masukRak(q, beli.id, item.id, [{ variant_id: a, qty: 6, factor: 12 }], STAF));
+  assert.equal(await stok(a), 72);
+  await tx((q) => masukRak(q, beli.id, item.id, [{ variant_id: b, qty: 5, factor: 12 }], STAF));
+  assert.equal(await stok(b), 60);
+  await ditolak(tx((q) => masukRak(q, beli.id, item.id, [{ variant_id: b, qty: 2, factor: 12 }], STAF)), /Melebihi/);
+  await tx((q) => masukRak(q, beli.id, item.id, [{ variant_id: b, qty: 1, factor: 12 }], STAF));
+  assert.equal((await queryOne('SELECT shelved FROM purchase_items WHERE id = ?', [item.id])).shelved, 144);
+  // Harga beli per biji diperbarui saat diterima (72.000 / 144 = 500).
+  assert.equal((await queryOne('SELECT cost FROM products WHERE id = ?', [p.pid])).cost, 500);
+
+  const hilang = await tx((q) => catatPembelian(q, sesi, { status: 'dalam_perjalanan', items: [{ product_id: p.pid, unit_name: 'dosin', factor: 12, qty: 2, unit_cost: 6000 }] }));
+  await tx((q) => ubahStatusPembelian(q, hilang.id, 'hilang', sesi));
+  const ih = await queryOne('SELECT * FROM purchase_items WHERE purchase_id = ?', [hilang.id]);
+  await ditolak(tx((q) => masukRak(q, hilang.id, ih.id, [{ variant_id: a, qty: 1 }], STAF)), /belum diterima/);
+  await ditolak(tx((q) => ubahStatusPembelian(q, hilang.id, 'diterima', sesi)), /sudah hilang/);
+  assert.equal(await stok(a), 72);
+});
+
+test('Stok tidak minus: penjualan, koreksi, dan cek sore menolak stok di bawah nol', async () => {
+  const p = await produk({ stok: [5, 3] });
+  const [a, b] = p.warna;
+  // Penjualan: draf dibuat saat stok cukup, lalu stok berkurang sebelum dilunasi.
+  await ditolak(nota({ items: [{ variant_id: a, unit_id: p.biji, qty: 6 }], paidCash: 6000 }), /tidak cukup/);
+  const d = await nota({ items: [{ variant_id: a, unit_id: p.biji, qty: 4 }], paidCash: 4000 });
+  await tx((q) => koreksiStok(q, { variantId: a, userId: STAF, delta: -2, note: 'hilang' }));
+  await ditolak(lunasi(d.saleId), /tidak cukup/);
+  assert.equal(await stok(a), 3);
+  // Koreksi: alasan wajib, dan tidak boleh di bawah nol.
+  await ditolak(tx((q) => koreksiStok(q, { variantId: a, userId: STAF, delta: -1, note: '' })), /Alasan/);
+  await ditolak(tx((q) => koreksiStok(q, { variantId: a, userId: STAF, delta: -4, note: 'salah hitung' })), /minus/);
+  // Cek sore: warna yang dipilih tidak boleh melebihi stoknya.
+  await notaLunas({ items: [{ variant_id: a, unit_id: p.biji, qty: 2, auto: true }], paidCash: 2000 });
+  assert.equal(await stok(a), 1);
+  await ditolak(tx((q) => cekSoreAlokasi(q, { productId: p.pid, userId: STAF, allocations: [{ variant_id: b, qty: 4 }] })), /harus sama/);
+  await tx((q) => q('UPDATE variants SET stock = 1 WHERE id = ?', [b]));
+  await ditolak(tx((q) => cekSoreAlokasi(q, { productId: p.pid, userId: STAF, allocations: [{ variant_id: b, qty: 2 }] })), /tidak cukup/);
+  await tx((q) => cekSoreAlokasi(q, { productId: p.pid, userId: STAF, allocations: [{ variant_id: a, qty: 1 }, { variant_id: b, qty: 1 }] }));
+  assert.equal(await stok(a), 2);
+  assert.equal(await stok(b), 0);
+  const { n } = await queryOne('SELECT COUNT(*) AS n FROM variants WHERE stock < 0 OR stok_rusak < 0');
+  assert.equal(n, 0);
+});
