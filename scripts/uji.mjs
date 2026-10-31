@@ -416,3 +416,28 @@ test('Teks pengingat WhatsApp mengikuti template dan penanda', () => {
   assert.match(t, /- NT-1 \(01\/10\/2026\): Rp 5\.000, jatuh tempo 08\/10\/2026/);
   assert.match(t, /1 nota sudah lewat jatuh tempo \(Rp 5\.000\)/);
 });
+
+test('Laporan: laba per kategori dikurangi retur, pergerakan stok dengan saldo berjalan, riwayat harga beli', async () => {
+  const { perKategori, pergerakanStok, riwayatHargaBeli } = await import('../lib/laporan.js');
+  const hari = (await queryOne('SELECT CURDATE() AS d')).d;
+  const p = await produk({ stok: [50], cost: 500, category: 'UJILAPORAN' });
+  const v = p.warna[0];
+  const n = await notaLunas({ items: [{ variant_id: v, unit_id: p.biji, qty: 10 }], paidCash: 10000 });
+  const it = await queryOne('SELECT id FROM sale_items WHERE sale_id = ?', [n.saleId]);
+  await tx((q) => prosesRetur(q, { userId: STAF }, { sale_id: n.saleId, items: [{ sale_item_id: it.id, qty: 2 }] }));
+  const k = (await perKategori(hari, hari)).find((x) => x.category === 'UJILAPORAN');
+  assert.equal(k.omset, 8000);
+  assert.equal(k.laba, 4000);
+
+  await tx((q) => koreksiStok(q, { variantId: v, userId: STAF, delta: -5, note: 'hilang' }));
+  const g = await pergerakanStok(p.pid, hari, hari);
+  assert.equal(g.awal.jual, 50);
+  assert.equal(g.akhir.jual, 37);
+  assert.deepEqual(g.rows.map((r) => r.jenis), ['jual', 'retur', 'koreksi']);
+  assert.equal(g.rows.at(-1).saldo_jual, 37);
+
+  await tx((q) => catatPembelian(q, { userId: ADMIN, isAdmin: true, bolehModal: true }, { items: [{ product_id: p.pid, unit_name: 'dosin', factor: 12, qty: 2, unit_cost: 6600 }] }));
+  const h = await riwayatHargaBeli(p.pid);
+  assert.equal(h.length, 1);
+  assert.equal(h[0].unit_cost, 6600);
+});

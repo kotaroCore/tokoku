@@ -91,11 +91,29 @@ td.r, th.r { text-align: right; }
 .suggest div { padding: 6px 9px; cursor: pointer; }
 .suggest div:hover { background: var(--bg); }
 .nota { font-family: ui-monospace, Consolas, monospace; max-width: 380px; }
+.hanya-cetak { display: none; }
 @media print {
-  .side, .bottom, .fab, .side-reopen, .sheet-bg, .noprint { display: none !important; }
+  .side, .bottom, .fab, .side-reopen, .sheet-bg, .noprint, .toasts { display: none !important; }
   main { margin-left: 0 !important; }
   body { background: #fff; color: #000; }
   .card { border: 0; }
+  .hanya-cetak { display: block; }
+}
+/* Laporan: ringkas di A4 (Simpan PDF lewat dialog cetak), satu sampai dua halaman untuk laporan harian. */
+@media print {
+  @page { size: A4; margin: 12mm; }
+  :root { --brand: #1e5eff; --muted: #555; --line: #ccc; --card: #fff; --text: #000; }
+  .laporan { font-size: 11px; }
+  .laporan h1 { font-size: 18px; margin: 0 0 2px; }
+  .laporan h2 { font-size: 13px; margin: 0 0 4px; }
+  .laporan .card { padding: 4px 0; margin: 0 0 6px; box-shadow: none; break-inside: avoid; }
+  .laporan .grid { gap: 8px; }
+  .laporan .grid.stats { grid-template-columns: repeat(4, 1fr); }
+  .laporan .grid.cols2 { grid-template-columns: 1fr 1fr; }
+  .laporan .stat .v { font-size: 14px; }
+  .laporan td, .laporan th { padding: 2px 4px; }
+  .laporan svg { max-height: 150px; }
+  .laporan details, .laporan p.muted { display: none; }
 }
 
 /* Layar sentuh: target tap besar, font 16px agar tidak auto-zoom */

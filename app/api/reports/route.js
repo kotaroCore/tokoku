@@ -1,12 +1,17 @@
 import { query, queryOne } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
+import { boleh } from '@/lib/izin';
+import { getSettings } from '@/lib/settings';
+import { perKategori, labaTotal, tren, laris, lambat, hutangLewat, rusak } from '@/lib/laporan';
 
 const hariIni = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const TANGGAL = /^\d{4}-\d{2}-\d{2}$/;
 
 // Laporan untuk rentang tanggal [from, to] (inklusif). Parameter lama `date` tetap didukung.
+// ?tren=hari|minggu|bulan mengatur pengelompokan grafik tren.
+// Laba, modal, dan nilai stok hanya untuk admin / staf berizin laporan_laba; staf lain mendapat laporan penjualan saja.
 export async function GET(req) {
-  const { error } = await requireApi();
+  const { session, error } = await requireApi();
   if (error) return error;
   const sp = new URL(req.url).searchParams;
   let from = sp.get('from') || sp.get('date') || hariIni();
@@ -66,6 +71,24 @@ export async function GET(req) {
     rentang
   );
   const { v: totalHutang } = await queryOne('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers');
+  const bolehLaba = boleh(session, 'laporan_laba');
+  const hariLambat = Number((await getSettings()).hari_lambat_laku) || 30;
+  const [kategori, laba, trenData, larisData, lambatData, hutangLewatData, rusakData] = await Promise.all([
+    perKategori(from, to), labaTotal(from, to), tren(from, to, sp.get('tren') || 'hari'), laris(from, to),
+    lambat(hariLambat), hutangLewat(), rusak(from, to),
+  ]);
+  const tanpa = (rows, ...keys) => rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))));
+  const lanjut = {
+    bolehLaba,
+    hariLambat,
+    perKategori: bolehLaba ? kategori : tanpa(kategori, 'laba', 'margin'),
+    laba: bolehLaba ? laba : null,
+    tren: trenData,
+    laris: larisData,
+    lambat: bolehLaba ? lambatData : tanpa(lambatData, 'nilai'),
+    hutangLewat: hutangLewatData,
+    rusak: bolehLaba ? rusakData : { sekarang: tanpa(rusakData.sekarang, 'nilai'), keluar: tanpa(rusakData.keluar, 'nilai_dibuang'), kerugian: null },
+  };
 
   // Kas per metode: uang masuk dari penjualan dikurangi uang keluar untuk retur dan pembelian.
   // Pembayaran hutang tidak punya metode bayar di database, jadi tidak ikut dihitung di sini.
@@ -89,5 +112,6 @@ export async function GET(req) {
     terlaris,
     shifts,
     totalHutang,
+    ...lanjut,
   });
 }
