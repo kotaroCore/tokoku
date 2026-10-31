@@ -22,7 +22,7 @@ const { query, queryOne, tx, closeDb } = await import('../lib/db.js');
 const { BadRequest, buatNota, lunasiNota, batalkanNota, bayarHutang, tambahSaldo } = await import('../lib/sales.js');
 const { prosesRetur } = await import('../lib/returns.js');
 const { catatPembelian, ubahStatusPembelian, masukRak } = await import('../lib/purchases.js');
-const { koreksiStok, cekSoreAlokasi } = await import('../lib/stok.js');
+const { koreksiStok, cekSoreAlokasi, isiStokAwal } = await import('../lib/stok.js');
 const { ubahProduk } = await import('../lib/produk.js');
 const { buangRusak, buatReturSupplier, selesaikanReturSupplier } = await import('../lib/rusak.js');
 const { NamaMirip, namaMirip, teksPengingat } = await import('../lib/pembeli.js');
@@ -440,4 +440,42 @@ test('Laporan: laba per kategori dikurangi retur, pergerakan stok dengan saldo b
   const h = await riwayatHargaBeli(p.pid);
   assert.equal(h.length, 1);
   assert.equal(h[0].unit_cost, 6600);
+});
+
+test('Diskon rupiah: tersimpan per baris dengan pemberinya, satu grup warna dibulatkan sekali', async () => {
+  const p = await produk({ stok: [5, 30] });
+  const [a, b] = p.warna;
+  // 1 dosin (Rp 10.000) diskon Rp 1.000, terpecah 5 biji warna A + 7 biji warna B.
+  const n = await notaLunas({
+    items: [
+      { variant_id: a, unit_id: p.dosin, qty: 5 / 12, diskon_rp: 417, grup: 'g1' },
+      { variant_id: b, unit_id: p.dosin, qty: 7 / 12, diskon_rp: 583, grup: 'g1' },
+    ],
+    paidCash: 9000,
+  });
+  const rows = await query('SELECT * FROM sale_items WHERE sale_id = ? ORDER BY id', [n.saleId]);
+  assert.equal(rows.reduce((s, r) => s + r.subtotal, 0), 9000);
+  assert.deepEqual(rows.map((r) => r.diskon_rp), [417, 583]);
+  assert.ok(rows.every((r) => r.diskon_oleh === STAF && r.discount_pct === 0));
+  await ditolak(nota({ items: [{ variant_id: b, unit_id: p.biji, qty: 1, diskon_rp: 1500 }], paidCash: 0 }), /melebihi/);
+  await ditolak(nota({ items: [{ variant_id: b, unit_id: p.biji, qty: 1, diskon_rp: -1 }], paidCash: 1000 }), /tidak negatif/);
+  const { diskonPerKasir } = await import('../lib/laporan.js');
+  const hari = (await queryOne('SELECT CURDATE() AS d')).d;
+  assert.ok((await diskonPerKasir(hari, hari)).find((x) => x.name === 'Staf').diskon >= 1000);
+});
+
+test('Stok awal: stok diganti hasil hitungan, selisih tercatat, warna diberi tanda', async () => {
+  const p = await produk({ stok: [40] });
+  const v = p.warna[0];
+  const r = await tx((q) => isiStokAwal(q, { variantId: v, userId: STAF, jumlah: 36 }));
+  assert.equal(r.sesudah, 36);
+  assert.equal(await stok(v), 36);
+  const adj = await queryOne("SELECT * FROM stock_adjustments WHERE variant_id = ? AND jenis = 'stok_awal'", [v]);
+  assert.equal(adj.delta, -4);
+  assert.equal(adj.note, 'stok awal');
+  assert.ok((await queryOne('SELECT stok_awal_pada FROM variants WHERE id = ?', [v])).stok_awal_pada);
+  // Hitungan sama dengan stok: tetap ditandai, tanpa koreksi baru.
+  await tx((q) => isiStokAwal(q, { variantId: v, userId: STAF, jumlah: 36 }));
+  assert.equal((await query("SELECT * FROM stock_adjustments WHERE variant_id = ? AND jenis = 'stok_awal'", [v])).length, 1);
+  await ditolak(tx((q) => isiStokAwal(q, { variantId: v, userId: STAF, jumlah: -1 })), /tidak valid/);
 });

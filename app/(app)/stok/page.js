@@ -65,6 +65,7 @@ export default function Stok() {
   return (
     <>
       <h1>Stok</h1>
+      <p><Link href="/stok/awal">Input stok awal per kategori →</Link></p>
       <div className="card">
         <div className="row">
           <div><label>Cari</label><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nama produk / warna" /></div>

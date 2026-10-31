@@ -14,7 +14,7 @@ export default function POS() {
   const [variantId, setVariantId] = useState(''); // teks bebas; bila cocok dengan warna yang ada, stok warna itu yang dikurangi
   const [unitId, setUnitId] = useState('');
   const [qty, setQty] = useState('1');
-  const [disc, setDisc] = useState('0');
+  const [disc, setDisc] = useState('0'); // diskon baris dalam rupiah
   const [discTouched, setDiscTouched] = useState(false);
   const [rusakMode, setRusakMode] = useState(false); // jual dari stok rusak, harga diketik kasir
   const [hargaRusak, setHargaRusak] = useState('');
@@ -66,10 +66,12 @@ export default function POS() {
 
   const unit = sel?.product.units.find((u) => String(u.id) === String(unitId));
 
-  // Saran diskon otomatis, kecuali kasir sudah mengubahnya manual.
+  // Saran diskon otomatis: aturannya persen (lib/discount.js), ditampilkan dan dicatat sebagai rupiah.
+  // Tidak menimpa angka yang sudah diubah kasir.
   useEffect(() => {
     if (!sel || !unit || discTouched) return;
-    setDisc(String(autoDiscount(sel.product.category, unit.name, Number(qty) || 0, unit.factor)));
+    const n = Number(String(qty).replace(',', '.')) || 0;
+    setDisc(String(Math.round((n * unit.price * autoDiscount(sel.product.category, unit.name, n, unit.factor)) / 100)));
   }, [sel, unit, qty, discTouched]);
 
   function pick(m) {
@@ -88,6 +90,8 @@ export default function POS() {
     setErr('');
     const n = Number(String(qty).replace(',', '.'));
     if (!sel || !unit || !(n > 0)) return setErr('Pilih produk, satuan, dan jumlah yang benar.');
+    // Satu penambahan = satu grup (dibulatkan sekali walau terpecah ke beberapa warna).
+    const grup = `${Date.now()}-${cart.length}`;
     const used = (id, rusak = false) => cart.filter((c) => c.variant.id === id && !!c.rusak === rusak).reduce((x, c) => x + c.qty * c.unit.factor, 0);
     if (rusakMode) {
       // Barang rusak: warna diambil dari stok rusak terbanyak; nota tetap tanpa warna, baris ditandai (rusak).
@@ -102,7 +106,7 @@ export default function POS() {
         if (need <= 1e-9) break;
         const take = Math.min(need, Math.max(0, sisaRusak(v)));
         if (take <= 0) continue;
-        lines.push({ product: sel.product, variant: v, unit, qty: take / unit.factor, disc: 0, auto: false, rusak: true, harga });
+        lines.push({ product: sel.product, variant: v, unit, qty: take / unit.factor, diskon: 0, grup, auto: false, rusak: true, harga });
         need -= take;
       }
       setCart([...cart, ...lines]);
@@ -111,7 +115,9 @@ export default function POS() {
     }
     const free = (v) => v.stock - used(v.id);
     const active = sel.product.variants.filter((v) => v.active);
-    const d = Math.min(100, Math.max(0, Number(disc) || 0));
+    const kotor = Math.round(n * unit.price);
+    const diskon = Math.round(Number(disc) || 0);
+    if (diskon < 0 || diskon > kotor) return setErr(`Diskon harus antara Rp 0 dan ${rp(kotor)}.`);
     let need = n * unit.factor;
     const lines = [];
     const typed = variantId.trim().toLowerCase();
@@ -150,11 +156,17 @@ export default function POS() {
         need -= take;
       }
     }
-    setCart([...cart, ...lines.map((l) => ({ product: sel.product, variant: l.v, unit, qty: l.qty, disc: d, auto: !!l.auto }))]);
+    // Diskon dibagi ke pecahan warna sebanding jumlahnya; sisa pembulatan ke pecahan terakhir.
+    let sisaDiskon = diskon;
+    setCart([...cart, ...lines.map((l, i) => {
+      const bagian = i === lines.length - 1 ? sisaDiskon : Math.round((diskon * l.qty) / n);
+      sisaDiskon -= bagian;
+      return { product: sel.product, variant: l.v, unit, qty: l.qty, diskon: bagian, grup, auto: !!l.auto };
+    })]);
     setSel(null);
   }
 
-  // Sama dengan server: satu produk/satuan/diskon yang terpecah ke beberapa warna dibulatkan sekali, selisih ke baris terakhir.
+  // Sama dengan server: satu grup yang terpecah ke beberapa warna dibulatkan sekali, selisih ke baris terakhir.
   const subtotals = (() => {
     const out = [];
     const groups = new Map();
@@ -163,10 +175,10 @@ export default function POS() {
       groups.set(key, [...(groups.get(key) || []), i]);
     });
     for (const idx of groups.values()) {
-      const part = (i) => cart[i].qty * priceOf(cart[i]) * (1 - cart[i].disc / 100);
-      let rest = Math.round(idx.reduce((s, i) => s + part(i), 0));
+      const kotor = (i) => cart[i].qty * priceOf(cart[i]);
+      let rest = Math.round(idx.reduce((s, i) => s + kotor(i), 0)) - idx.reduce((s, i) => s + cart[i].diskon, 0);
       idx.forEach((i, k) => {
-        out[i] = k === idx.length - 1 ? rest : Math.round(part(i));
+        out[i] = k === idx.length - 1 ? rest : Math.round(kotor(i)) - cart[i].diskon;
         rest -= out[i];
       });
     }
@@ -179,9 +191,9 @@ export default function POS() {
     const groups = new Map();
     cart.forEach((c, i) => {
       const key = groupKey(c);
-      if (!groups.has(key)) groups.set(key, { c, idx: [], qty: 0, sub: 0 });
+      if (!groups.has(key)) groups.set(key, { c, idx: [], qty: 0, sub: 0, diskon: 0 });
       const g = groups.get(key);
-      g.idx.push(i); g.qty += c.qty; g.sub += subtotals[i];
+      g.idx.push(i); g.qty += c.qty; g.sub += subtotals[i]; g.diskon += c.diskon;
     });
     return [...groups.values()];
   })();
@@ -241,7 +253,7 @@ export default function POS() {
     const r = await post('/api/sales', {
       channel,
       draft,
-      items: cart.map((c) => ({ variant_id: c.variant.id, unit_id: c.unit.id, qty: c.qty, auto: c.auto, discount_pct: c.disc, dari_rusak: c.rusak ? 1 : 0, harga: c.rusak ? c.harga : undefined })),
+      items: cart.map((c) => ({ variant_id: c.variant.id, unit_id: c.unit.id, qty: c.qty, auto: c.auto, diskon_rp: c.diskon, grup: c.grup, dari_rusak: c.rusak ? 1 : 0, harga: c.rusak ? c.harga : undefined })),
       customer_name: custName,
       customer_phone: custPhone,
       customer_address: custAddr,
@@ -312,7 +324,7 @@ export default function POS() {
                   <div><label>Jumlah</label><input inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
                   {rusakMode
                     ? <div><label>Harga rusak / {unit?.name || 'satuan'}</label><input inputMode="numeric" value={hargaRusak} onChange={(e) => setHargaRusak(e.target.value)} placeholder={unit ? String(unit.price) : ''} /></div>
-                    : <div><label>Diskon %</label><input inputMode="decimal" value={disc} onChange={(e) => { setDisc(e.target.value); setDiscTouched(true); }} /></div>}
+                    : <div><label>Diskon (Rp)</label><input inputMode="numeric" value={disc} onChange={(e) => { setDisc(e.target.value); setDiscTouched(true); }} /></div>}
                 </div>
                 {sel.product.variants.some((v) => v.stok_rusak > 0) && (
                   <label style={{ display: 'block', margin: '6px 0' }}>
@@ -325,7 +337,7 @@ export default function POS() {
                   <input value={variantId} onChange={(e) => setVariantId(e.target.value)} placeholder="mis. hitam, atau hitam 2, putih 2 (angka = satuan dasar). Sisanya otomatis & dicek sore" />
                 </div>}
                 <p className="muted">
-                  Subtotal: {unit ? rp((Number(String(qty).replace(',', '.')) || 0) * (rusakMode ? Number(hargaRusak) || 0 : unit.price * (1 - (Number(disc) || 0) / 100))) : '-'}
+                  Subtotal: {unit ? rp((Number(String(qty).replace(',', '.')) || 0) * (rusakMode ? Number(hargaRusak) || 0 : unit.price) - (rusakMode ? 0 : Number(disc) || 0)) : '-'}
                 </p>
                 <button onClick={addToCart}>Tambah ke keranjang</button>{' '}
                 <button className="secondary" onClick={() => setSel(null)}>Batal</button>
@@ -342,7 +354,7 @@ export default function POS() {
                 <tbody>
                   {cartRows.map((g) => (
                     <tr key={g.idx[0]}>
-                      <td>{g.c.product.name}{g.c.rusak && <span className="badge red"> rusak</span>}{g.c.disc > 0 && <span className="muted"> diskon {g.c.disc}%</span>}</td>
+                      <td>{g.c.product.name}{g.c.rusak && <span className="badge red"> rusak</span>}{g.diskon > 0 && <span className="muted"> diskon {rp(g.diskon)}</span>}</td>
                       <td className="r">{num(g.qty)} {g.c.unit.name}</td>
                       <td className="r">{rp(priceOf(g.c))}</td>
                       <td className="r">{rp(g.sub)}</td>
@@ -467,14 +479,17 @@ export default function POS() {
 
 // Harga satuan baris keranjang: harga barang rusak diketik kasir, selain itu harga satuan produk.
 const priceOf = (c) => (c.rusak ? c.harga : c.unit.price);
-// Satu produk/satuan/diskon (dan harga rusak) yang terpecah ke beberapa warna dihitung sebagai satu kelompok.
-const groupKey = (c) => `${c.product.id}:${c.unit.id}:${c.disc}:${c.rusak ? 'r' + c.harga : ''}`;
+// Satu penambahan ke keranjang (grup) yang terpecah ke beberapa warna dihitung sebagai satu kelompok.
+const groupKey = (c) => `${c.product.id}:${c.unit.id}:${c.grup}`;
 
-// Nota hanya per produk: baris yang terpecah per warna digabung (produk, satuan, harga, diskon sama).
+// Diskon baris dalam rupiah (nota lama dengan diskon persen dihitung dari selisih harga).
+const diskonBaris = (i) => Math.max(0, Math.round(i.qty * i.unit_price) - i.subtotal);
+
+// Nota hanya per produk: baris yang terpecah per warna digabung (produk, satuan, harga sama).
 function mergeItems(items) {
   const out = new Map();
   for (const i of items) {
-    const key = `${i.product_name}|${i.unit_name}|${i.unit_price}|${i.discount_pct}|${i.dari_rusak}`;
+    const key = `${i.product_name}|${i.unit_name}|${i.unit_price}|${i.dari_rusak}`;
     const g = out.get(key);
     if (g) { g.qty += i.qty; g.subtotal += i.subtotal; } else out.set(key, { ...i });
   }
@@ -489,13 +504,13 @@ function Nota({ nota, onClose }) {
       <div className="card nota">
         <h2>Toko</h2>
         <div className="muted">{nota.created_at}</div>
-        <div className="muted">No. {nota.id} • kasir {nota.kasir}{nota.customer_name && ` • ${nota.customer_name}`}</div>
+        <div className="muted">No. {nota.nomor || nota.id} • kasir {nota.kasir}{nota.customer_name && ` • ${nota.customer_name}`}</div>
         <hr style={{ borderStyle: 'dashed' }} />
         {mergeItems(nota.items).map((i) => (
           <div key={i.id} style={{ marginBottom: 6 }}>
             <div>{i.product_name} ({i.unit_name}){i.dari_rusak ? ' (rusak)' : ''}</div>
             <div style={line}>
-              <span>{num(i.qty)} X {num(i.unit_price)}{i.discount_pct > 0 && ` (-${i.discount_pct}%)`}</span>
+              <span>{num(i.qty)} X {num(i.unit_price)}{diskonBaris(i) > 0 && ` (diskon ${rp(diskonBaris(i))})`}</span>
               <span>{rp(i.subtotal)}</span>
             </div>
           </div>

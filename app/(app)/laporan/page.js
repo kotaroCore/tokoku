@@ -49,6 +49,9 @@ function buatCsv(d) {
   tambah('Per kasir', 'Nota', 'Omset');
   for (const u of d.perUser) tambah(u.name, u.nota, u.omset);
   kosong();
+  tambah('Diskon per kasir', 'Baris', 'Diskon');
+  for (const x of d.diskon) tambah(x.name, x.baris, x.diskon);
+  kosong();
   tambah('Per channel', 'Nota', 'Omset');
   for (const c of d.perChannel) tambah(c.channel, c.nota, c.omset);
   kosong();
@@ -181,6 +184,12 @@ export default function Laporan() {
                   {d.perChannel.map((c) => <tr key={c.channel}><td>{c.channel}</td><td className="r">{c.nota} nota</td><td className="r">{rp(c.omset)}</td></tr>)}
                 </tbody>
               </table>
+              <h2 style={{ marginTop: 14 }}>Diskon per kasir</h2>
+              {!d.diskon.length ? <p className="muted">Tidak ada diskon.</p> : (
+                <table>
+                  <tbody>{d.diskon.map((x) => <tr key={x.name}><td>{x.name}</td><td className="r">{x.baris} baris</td><td className="r">{rp(x.diskon)}</td></tr>)}</tbody>
+                </table>
+              )}
             </div>
             <div className="card">
               <h2>Shift</h2>

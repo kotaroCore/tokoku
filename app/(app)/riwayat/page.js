@@ -214,7 +214,7 @@ function SaleDetail({ id, onChanged }) {
               return (
                 <tr key={it.id}>
                   <td>{it.product_name}{it.color && ` — ${it.color}`}{it.dari_rusak ? ' (rusak)' : ''}</td>
-                  <td className="r">{rp(it.unit_price)}{it.discount_pct > 0 && ` (-${num(it.discount_pct)}%)`} / {it.unit_name}</td>
+                  <td className="r">{rp(it.unit_price)} / {it.unit_name}{Math.round(it.qty * it.unit_price) > it.subtotal && <div className="muted">diskon {rp(Math.round(it.qty * it.unit_price) - it.subtotal)}</div>}</td>
                   <td className="r">{num(it.qty)} {it.unit_name}</td>
                   <td className="r">{it.returned_qty > 0 ? num(it.returned_qty) : ''}</td>
                   <td className="r">

@@ -2,7 +2,7 @@ import { query, queryOne } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { boleh } from '@/lib/izin';
 import { getSettings } from '@/lib/settings';
-import { perKategori, labaTotal, tren, laris, lambat, hutangLewat, rusak } from '@/lib/laporan';
+import { perKategori, labaTotal, tren, laris, lambat, hutangLewat, rusak, diskonPerKasir } from '@/lib/laporan';
 
 const hariIni = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const TANGGAL = /^\d{4}-\d{2}-\d{2}$/;
@@ -73,9 +73,9 @@ export async function GET(req) {
   const { v: totalHutang } = await queryOne('SELECT COALESCE(SUM(total_hutang),0) AS v FROM customers');
   const bolehLaba = boleh(session, 'laporan_laba');
   const hariLambat = Number((await getSettings()).hari_lambat_laku) || 30;
-  const [kategori, laba, trenData, larisData, lambatData, hutangLewatData, rusakData] = await Promise.all([
+  const [kategori, laba, trenData, larisData, lambatData, hutangLewatData, rusakData, diskon] = await Promise.all([
     perKategori(from, to), labaTotal(from, to), tren(from, to, sp.get('tren') || 'hari'), laris(from, to),
-    lambat(hariLambat), hutangLewat(), rusak(from, to),
+    lambat(hariLambat), hutangLewat(), rusak(from, to), diskonPerKasir(from, to),
   ]);
   const tanpa = (rows, ...keys) => rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))));
   const lanjut = {
@@ -84,6 +84,7 @@ export async function GET(req) {
     perKategori: bolehLaba ? kategori : tanpa(kategori, 'laba', 'margin'),
     laba: bolehLaba ? laba : null,
     tren: trenData,
+    diskon,
     laris: larisData,
     lambat: bolehLaba ? lambatData : tanpa(lambatData, 'nilai'),
     hutangLewat: hutangLewatData,
