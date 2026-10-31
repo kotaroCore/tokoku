@@ -82,6 +82,22 @@ export default function Pengaturan() {
       </div>
 
       <div className="card">
+        <h2 style={{ marginTop: 0 }}>Toko, hutang, dan pengingat WhatsApp</h2>
+        <div className="row">
+          <div className="field"><label>Nama toko (untuk {'{toko}'})</label><input value={s.nama_toko} onChange={(e) => set('nama_toko', e.target.value)} /></div>
+          <div className="field"><label>Jatuh tempo hutang bawaan (hari)</label><input inputMode="numeric" value={s.hutang_tempo_hari} onChange={(e) => set('hutang_tempo_hari', e.target.value)} /></div>
+          <div className="field"><label>Laporan: produk lambat laku bila tidak terjual (hari)</label><input inputMode="numeric" value={s.hari_lambat_laku} onChange={(e) => set('hari_lambat_laku', e.target.value)} /></div>
+        </div>
+        <div className="field">
+          <label>Teks pengingat hutang WhatsApp</label>
+          <textarea rows={7} value={s.wa_pengingat} onChange={(e) => set('wa_pengingat', e.target.value)} style={{ width: '100%', fontFamily: 'inherit' }} />
+          <div className="muted">Penanda: {'{nama}'} nama pembeli, {'{total}'} total hutang, {'{rincian}'} daftar nota (nomor, tanggal, sisa, jatuh tempo), {'{toko}'} nama toko, {'{lewat_tempo}'} jumlah nota yang lewat jatuh tempo (kosong bila tidak ada).</div>
+        </div>
+        <Msg card="toko" />
+        <button onClick={() => save('toko', ['nama_toko', 'hutang_tempo_hari', 'hari_lambat_laku', 'wa_pengingat'], 'Pengaturan toko dan hutang disimpan.')}>Simpan</button>
+      </div>
+
+      <div className="card">
         <h2 style={{ marginTop: 0 }}>Backup database</h2>
         <p className="muted">
           Yang disimpan: seluruh isi database (semua tabel) dalam satu file terkompres, dibuat tanpa mengganggu kasir.

@@ -153,16 +153,20 @@ function SaleDetail({ id, onChanged }) {
     const pesan = tukarItems.length ? `Proses tukar barang? Nilai retur ${rp(preview.total)}, barang pengganti sekitar ${rp(tukarTotal)}. Ini tidak bisa dibatalkan.` : `Proses retur ${rp(preview.total)}? Ini tidak bisa dibatalkan.`;
     if (!confirm(pesan)) return;
     setBusy(true);
-    const r = await fetch('/api/returns', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sale_id: sale.id, items, pengecualian, refund_method: method, note,
-        tukar: tukarItems,
-        paid_cash: Number(bayarTukar.cash) || 0, paid_ewallet: Number(bayarTukar.ewallet) || 0, paid_ewallet_ket: bayarTukar.ewalletKet,
-        paid_transfer: Number(bayarTukar.transfer) || 0, paid_saldo: Number(bayarTukar.saldo) || 0,
-      }),
-    });
-    const d = await r.json();
+    const body = {
+      sale_id: sale.id, items, pengecualian, refund_method: method, note,
+      tukar: tukarItems,
+      paid_cash: Number(bayarTukar.cash) || 0, paid_ewallet: Number(bayarTukar.ewallet) || 0, paid_ewallet_ket: bayarTukar.ewalletKet,
+      paid_transfer: Number(bayarTukar.transfer) || 0, paid_saldo: Number(bayarTukar.saldo) || 0,
+    };
+    const kirim = (b) => fetch('/api/returns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    let r = await kirim(body);
+    let d = await r.json();
+    // Nota pengganti untuk pembeli baru yang namanya mirip pembeli lama.
+    if (r.status === 409 && confirm(`${d.error}\n\nMirip: ${d.mirip.map((c) => c.name).join(', ')}\n\nOK = tetap buat pembeli baru.`)) {
+      r = await kirim({ ...body, pembeli_baru: true });
+      d = await r.json();
+    }
     setBusy(false);
     if (!r.ok) return setErr(d.error);
     setDone(d);

@@ -25,7 +25,7 @@ export default function Cek() {
   const [keluar, setKeluar] = useState({ dompet: 'laci', jumlah: '', keterangan: '' });
   const [hitung, setHitung] = useState({ dompet: 'laci', fisik: '' });
   // Hutang (langkah 6) dan harga (langkah 7)
-  const [hutang, setHutang] = useState({ jumlah: 0, total: 0 });
+  const [hutang, setHutang] = useState({ jumlah: 0, total: 0, lewatNota: 0, lewatTotal: 0 });
   const [alerts, setAlerts] = useState([]);
 
   const load = () => {
@@ -45,8 +45,9 @@ export default function Cek() {
       }));
     });
     fetch('/api/dompet').then((r) => r.json()).then(setDompet);
-    fetch('/api/debts').then((r) => r.json()).then((rows) => setHutang({
+    fetch('/api/debts').then((r) => r.json()).then(({ rows }) => setHutang({
       jumlah: rows.length, total: rows.reduce((s, c) => s + c.total_hutang, 0),
+      lewatNota: rows.reduce((s, c) => s + c.lewat_nota, 0), lewatTotal: rows.reduce((s, c) => s + c.lewat_tempo, 0),
     }));
     fetch('/api/harga-alert').then((r) => r.json()).then(setAlerts);
   };
@@ -267,6 +268,7 @@ export default function Cek() {
       <div className="card">
         <h2>6. Hutang pembeli</h2>
         <p>{hutang.jumlah > 0 ? <>{hutang.jumlah} pembeli, total <strong>{rp(hutang.total)}</strong>. </> : 'Tidak ada hutang. '}<Link href="/hutang">Buka daftar hutang</Link></p>
+        {hutang.lewatNota > 0 && <p><span className="badge red">{hutang.lewatNota} nota lewat jatuh tempo hari ini, {rp(hutang.lewatTotal)}</span> Kirim pengingat dari daftar hutang.</p>}
       </div>
 
       <div className="card">

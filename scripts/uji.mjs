@@ -25,6 +25,7 @@ const { catatPembelian, ubahStatusPembelian, masukRak } = await import('../lib/p
 const { koreksiStok, cekSoreAlokasi } = await import('../lib/stok.js');
 const { ubahProduk } = await import('../lib/produk.js');
 const { buangRusak, buatReturSupplier, selesaikanReturSupplier } = await import('../lib/rusak.js');
+const { NamaMirip, namaMirip, teksPengingat } = await import('../lib/pembeli.js');
 const { Forbidden } = await import('../lib/izin.js');
 const { saldoDompet } = await import('../lib/dompet.js');
 
@@ -369,4 +370,49 @@ test('Retur ke supplier: dikirim, ditolak, diuangkan, dan diganti lewat barang m
   assert.equal(await stok(b), 13);
   assert.equal(await rusak(b), 2);
   assert.equal(await stok(a), 10);
+});
+
+test('Jatuh tempo: bawaan H+7 saat lunas, atau tanggal pilihan kasir', async () => {
+  const p = await produk({ stok: [100] });
+  const a = await notaLunas({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 2 }], customerName: 'Tempo Uji' });
+  const s = await queryOne('SELECT jatuh_tempo, DATE(created_at) + INTERVAL 7 DAY AS h7 FROM sales WHERE id = ?', [a.saleId]);
+  assert.equal(s.jatuh_tempo, s.h7);
+  const besok = (await queryOne('SELECT CURDATE() + INTERVAL 3 DAY AS d')).d;
+  const b = await notaLunas({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], customerName: 'Tempo Uji', paidCash: 0, payDebt: 0, jatuhTempo: besok });
+  assert.equal((await queryOne('SELECT jatuh_tempo FROM sales WHERE id = ?', [b.saleId])).jatuh_tempo, besok);
+  const kemarin = (await queryOne('SELECT CURDATE() - INTERVAL 1 DAY AS d')).d;
+  await ditolak(nota({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], customerName: 'Tempo Uji', jatuhTempo: kemarin }), /sebelum hari ini/);
+  // Nota tanpa hutang tidak punya jatuh tempo.
+  const c = await notaLunas({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], paidCash: 1000 });
+  assert.equal((await queryOne('SELECT jatuh_tempo FROM sales WHERE id = ?', [c.saleId])).jatuh_tempo, null);
+});
+
+test('Nama mirip: pembeli baru dengan nama mirip memunculkan pilihan, tetap boleh dibuat baru', async () => {
+  assert.equal(namaMirip('Andi  Baki', 'andi baki'), true);
+  assert.equal(namaMirip('Andi Bakri', 'Andi Baki'), true); // jarak edit 1
+  assert.equal(namaMirip('Andi', 'Andi Baki anak pak lurah'), true); // yang satu memuat yang lain
+  assert.equal(namaMirip('Budi', 'Siti'), false);
+  const p = await produk({ stok: [100] });
+  await notaLunas({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], customerName: 'Sumarni Pasar' });
+  await assert.rejects(
+    nota({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], customerName: 'Sumarni Pasar Baru' }),
+    (e) => e instanceof NamaMirip && e.mirip.some((c) => c.name === 'Sumarni Pasar')
+  );
+  await notaLunas({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], customerName: 'Sumarni Pasar Baru', pembeliBaru: true });
+  assert.ok(await pembeli('Sumarni Pasar Baru'));
+  // Nama yang persis sama memakai pembeli yang sudah ada tanpa pertanyaan.
+  await notaLunas({ items: [{ variant_id: p.warna[0], unit_id: p.biji, qty: 1 }], customerName: 'Sumarni Pasar' });
+});
+
+test('Teks pengingat WhatsApp mengikuti template dan penanda', () => {
+  const t = teksPengingat('Halo {nama} dari {toko}: {total}\n{rincian}\n{lewat_tempo}', {
+    nama: 'Bu Ani', toko: 'Toko Jaya', total: 15000,
+    notas: [
+      { nomor: 'NT-1', tanggal: '2026-10-01', sisa: 5000, jatuh_tempo: '2026-10-08', lewat: 1 },
+      { nomor: 'NT-2', tanggal: '2026-10-30', sisa: 10000, jatuh_tempo: '2026-11-06', lewat: 0 },
+    ],
+  });
+  assert.match(t, /^Halo Bu Ani dari Toko Jaya: Rp 15\.000/);
+  assert.match(t, /- NT-1 \(01\/10\/2026\): Rp 5\.000, jatuh tempo 08\/10\/2026/);
+  assert.match(t, /1 nota sudah lewat jatuh tempo \(Rp 5\.000\)/);
 });

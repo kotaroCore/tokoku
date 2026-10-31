@@ -33,6 +33,9 @@ export default function POS() {
   const [transfer, setTransfer] = useState('');
   const [saldoPakai, setSaldoPakai] = useState(''); // dari saldo titipan pembeli
   const [payDebt, setPayDebt] = useState('');
+  const [tempoHari, setTempoHari] = useState(7); // jatuh tempo bawaan dari pengaturan
+  const [jatuhTempo, setJatuhTempo] = useState(''); // kosong = bawaan
+  const [mirip, setMirip] = useState(null); // { draft, list }: nama pembeli baru mirip pembeli lama
 
   const [err, setErr] = useState('');
   const [info, setInfo] = useState(''); // pesan sukses, mis. draf tersimpan
@@ -40,7 +43,10 @@ export default function POS() {
   const [busy, setBusy] = useState(false);
 
   const loadProducts = () => fetch('/api/products').then((r) => r.json()).then(setProducts);
-  useEffect(() => { loadProducts(); }, []);
+  useEffect(() => {
+    loadProducts();
+    fetch('/api/debts?config=1').then((r) => r.json()).then((d) => setTempoHari(d.tempo_hari));
+  }, []);
   // Keranjang terisi = sedang transaksi: logout otomatis ditunda.
   useEffect(() => {
     tandaiTransaksi('pos', cart.length > 0);
@@ -186,6 +192,8 @@ export default function POS() {
   const tagihan = total + pembulatan;
   const hutangBaru = Math.max(0, tagihan - Math.max(0, paid - oldPay));
   const kembalian = Math.max(0, paid - oldPay - tagihan);
+  const tanggal = (hari) => new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + hari * 86400000).toISOString().slice(0, 10);
+  const tempoBawaan = tanggal(tempoHari);
 
   async function onName(v) {
     setCustName(v);
@@ -203,8 +211,13 @@ export default function POS() {
     const input = prompt(`Titip saldo untuk ${custName || 'pembeli'}. Jumlah (Rp):`);
     if (!input) return;
     setErr('');
-    const r = await post('/api/saldo', { customer_id: known?.id, customer_name: custName, customer_phone: custPhone, customer_address: custAddr, amount: Number(input) });
-    const d = await r.json();
+    const body = { customer_id: known?.id, customer_name: custName, customer_phone: custPhone, customer_address: custAddr, amount: Number(input) };
+    let r = await post('/api/saldo', body);
+    let d = await r.json();
+    if (r.status === 409 && confirm(`${d.error}\n\nMirip: ${d.mirip.map((c) => c.name).join(', ')}\n\nOK = tetap buat pembeli baru. Batal = pilih nama yang sudah ada dulu.`)) {
+      r = await post('/api/saldo', { ...body, pembeli_baru: true });
+      d = await r.json();
+    }
     if (!r.ok) return setErr(d.error);
     setKnown({ ...(known || {}), id: d.customer_id, name: custName, saldo: d.saldo });
     setInfo(`Titipan ${rp(Number(input))} dicatat. Saldo sekarang ${rp(d.saldo)}.`);
@@ -219,9 +232,11 @@ export default function POS() {
   }
 
   // draft: true = simpan sebagai nota draf (stok belum berkurang, dilunasi lewat Riwayat).
-  async function checkout(draft = false) {
+  // pembeliBaru: kasir sudah memilih "tetap buat baru" walau ada nama mirip.
+  async function checkout(draft = false, pembeliBaru = false) {
     setErr('');
     setInfo('');
+    setMirip(null);
     setBusy(true);
     const r = await post('/api/sales', {
       channel,
@@ -237,10 +252,14 @@ export default function POS() {
       paid_transfer: Number(transfer) || 0,
       paid_saldo: Number(saldoPakai) || 0,
       pay_old_debt: oldPay,
+      jatuh_tempo: hutangBaru > 0 && jatuhTempo ? jatuhTempo : null,
+      pembeli_baru: pembeliBaru,
     });
     const d = await r.json();
     setBusy(false);
+    if (r.status === 409) return setMirip({ draft, list: d.mirip });
     if (!r.ok) return setErr(d.error);
+    setJatuhTempo('');
     if (draft || d.status === 'draft') {
       setInfo(d.menunggu
         ? `Nota ${d.nomor} disimpan. Menunggu konfirmasi dana e-wallet / transfer; konfirmasi lewat Riwayat sebelum barang diserahkan.`
@@ -371,6 +390,7 @@ export default function POS() {
             <div className="alert">
               ⚠️ Pembeli ini masih punya hutang <strong>{rp(known.total_hutang)}</strong>
               {known.last_hutang_date && ` per ${known.last_hutang_date}`}.
+              {known.lewat_nota > 0 && <> <span className="badge red">{rp(known.lewat_tempo)} sudah lewat jatuh tempo ({known.lewat_nota} nota)</span></>}
               <div style={{ marginTop: 6 }}>
                 <button className="secondary" onClick={() => setPayDebt(String(known.total_hutang))}>Bayar lunas sekarang</button>
               </div>
@@ -412,6 +432,25 @@ export default function POS() {
               <tr><td>Kembalian</td><td className="r">{rp(kembalian)}</td></tr>
             </tbody>
           </table>
+          {hutangBaru > 0 && (
+            <div className="field" style={{ marginTop: 8 }}>
+              <label>Jatuh tempo hutang (bawaan {tempoHari} hari)</label>
+              <input type="date" value={jatuhTempo || tempoBawaan} min={tanggal(0)} onChange={(e) => setJatuhTempo(e.target.value)} />
+            </div>
+          )}
+          {mirip && (
+            <div className="alert">
+              Nama <strong>{custName}</strong> mirip dengan pembeli yang sudah ada. Pakai yang sudah ada?
+              <div style={{ marginTop: 6 }}>
+                {mirip.list.map((c) => (
+                  <button key={c.id} className="secondary" style={{ margin: '0 6px 6px 0' }} onClick={() => { chooseCustomer(c); setMirip(null); }}>
+                    {c.name}{c.total_hutang > 0 ? ` (hutang ${rp(c.total_hutang)})` : ''}{c.address ? ` — ${c.address}` : ''}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => checkout(mirip.draft, true)}>Tetap buat pembeli baru "{custName}"</button>
+            </div>
+          )}
           {err && <div className="alert err">{err}</div>}
           {info && <div className="alert ok">{info}</div>}
           <button disabled={busy || cart.length === 0} onClick={() => checkout(false)} style={{ marginTop: 10, width: '100%' }}>

@@ -1,6 +1,7 @@
 import { queryOne, query, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
-import { BadRequest, buatNota, lunasiNota } from '@/lib/sales';
+import { buatNota, lunasiNota } from '@/lib/sales';
+import { galat } from '@/lib/galat';
 
 // Kasir menyimpan nota: langsung lunas, atau draf bila { draft: true } (stok belum berkurang).
 export async function POST(req) {
@@ -18,6 +19,8 @@ export async function POST(req) {
         customerName: (b.customer_name || '').trim(),
         customerPhone: b.customer_phone,
         customerAddress: b.customer_address,
+        pembeliBaru: !!b.pembeli_baru,
+        jatuhTempo: b.jatuh_tempo || null,
         paidCash: Number(b.paid_cash) || 0,
         paidEwallet: Number(b.paid_ewallet) || 0,
         paidEwalletKet: (b.paid_ewallet_ket || '').trim(),
@@ -33,9 +36,7 @@ export async function POST(req) {
     });
     return Response.json({ ok: true, ...result });
   } catch (e) {
-    if (e instanceof BadRequest) return Response.json({ error: e.message }, { status: 400 });
-    console.error(e);
-    return Response.json({ error: 'Terjadi kesalahan di server' }, { status: 500 });
+    return galat(e);
   }
 }
 

@@ -1,6 +1,7 @@
 import { query, queryOne, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
-import { BadRequest, tambahSaldo } from '@/lib/sales';
+import { BadRequest, tambahSaldo, pembeliDariNama } from '@/lib/sales';
+import { galat } from '@/lib/galat';
 import { catatDompet } from '@/lib/dompet';
 
 // Saldo titipan satu pembeli beserta riwayat perubahannya.
@@ -48,11 +49,7 @@ export async function POST(req) {
         // Pembeli baru: nama wajib spesifik, sama seperti pembeli berhutang.
         const name = (b.customer_name || '').trim();
         if (!name) throw new BadRequest('Isi nama pembeli');
-        [c] = await q('SELECT * FROM customers WHERE name = ? FOR UPDATE', [name]);
-        if (!c) {
-          const r = await q('INSERT INTO customers (name, phone, address) VALUES (?, ?, ?)', [name, b.customer_phone || null, b.customer_address || null]);
-          [c] = await q('SELECT * FROM customers WHERE id = ?', [r.insertId]);
-        }
+        c = await pembeliDariNama(q, { name, phone: b.customer_phone, address: b.customer_address, pembeliBaru: !!b.pembeli_baru });
       }
       await tambahSaldo(q, c.id, amount, session.uid, { jenis: 'titip', note: (b.note || '').trim() || null });
       // Titipan tunai masuk laci; titipan lewat e-wallet / transfer tidak.
@@ -64,8 +61,6 @@ export async function POST(req) {
     });
     return Response.json({ ok: true, ...result });
   } catch (e) {
-    if (e instanceof BadRequest) return Response.json({ error: e.message }, { status: 400 });
-    console.error(e);
-    return Response.json({ error: 'Terjadi kesalahan di server' }, { status: 500 });
+    return galat(e);
   }
 }

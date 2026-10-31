@@ -48,6 +48,26 @@ export async function PUT(req) {
     if (!Number.isInteger(d) || d < 1 || d > 365) return bad('Lama simpan backup harus 1–365 hari.');
     out.backup_keep_days = String(d);
   }
+  if ('nama_toko' in b) {
+    const t = String(b.nama_toko || '').trim();
+    if (!t || t.length > 100) return bad('Nama toko wajib diisi (maks. 100 huruf).');
+    out.nama_toko = t;
+  }
+  if ('hutang_tempo_hari' in b) {
+    const d = Number(b.hutang_tempo_hari);
+    if (!Number.isInteger(d) || d < 0 || d > 365) return bad('Jatuh tempo bawaan harus 0–365 hari.');
+    out.hutang_tempo_hari = String(d);
+  }
+  if ('hari_lambat_laku' in b) {
+    const d = Number(b.hari_lambat_laku);
+    if (!Number.isInteger(d) || d < 1 || d > 365) return bad('Batas lambat laku harus 1–365 hari.');
+    out.hari_lambat_laku = String(d);
+  }
+  if ('wa_pengingat' in b) {
+    const t = String(b.wa_pengingat || '').trim();
+    if (!t || t.length > 2000) return bad('Teks pengingat wajib diisi (maks. 2000 huruf).');
+    out.wa_pengingat = t;
+  }
   if ('backup_dir' in b) {
     const dir = String(b.backup_dir || '').trim();
     try {
