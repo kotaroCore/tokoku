@@ -24,6 +24,7 @@ const { prosesRetur } = await import('../lib/returns.js');
 const { catatPembelian, ubahStatusPembelian, masukRak } = await import('../lib/purchases.js');
 const { koreksiStok, cekSoreAlokasi } = await import('../lib/stok.js');
 const { ubahProduk } = await import('../lib/produk.js');
+const { buangRusak, buatReturSupplier, selesaikanReturSupplier } = await import('../lib/rusak.js');
 const { Forbidden } = await import('../lib/izin.js');
 const { saldoDompet } = await import('../lib/dompet.js');
 
@@ -301,4 +302,71 @@ test('Koreksi stok tercatat di catatan perubahan dengan nilai lama dan baru', as
   assert.deepEqual(JSON.parse(c.lama), { stock: 10 });
   assert.deepEqual(JSON.parse(c.baru), { stock: 7, alasan: 'salah hitung' });
   assert.equal(c.user_id, STAF);
+});
+
+test('Jual barang rusak: stok rusak berkurang saat lunas, stok jual tetap; retur kembali ke stok rusak', async () => {
+  const p = await produk({ stok: [20, 20] });
+  const [a, b] = p.warna;
+  await query('UPDATE variants SET stok_rusak = 3 WHERE id = ?', [a]);
+  await query('UPDATE variants SET stok_rusak = 5 WHERE id = ?', [b]);
+  await ditolak(nota({ items: [{ variant_id: b, unit_id: p.biji, qty: 6, dari_rusak: 1, harga: 200 }], paidCash: 1200 }), /rusak/);
+  const n = await nota({ items: [{ variant_id: b, unit_id: p.biji, qty: 4, dari_rusak: 1, harga: 250 }], paidCash: 1000 });
+  assert.equal(await rusak(b), 5);
+  await lunasi(n.saleId);
+  assert.equal(await rusak(b), 1);
+  assert.equal(await stok(b), 20);
+  const it = await queryOne('SELECT * FROM sale_items WHERE sale_id = ?', [n.saleId]);
+  assert.equal(it.dari_rusak, 1);
+  assert.equal(it.subtotal, 1000);
+  await tx((q) => prosesRetur(q, { userId: STAF }, { sale_id: n.saleId, items: [{ sale_item_id: it.id, qty: 1 }] }));
+  assert.equal(await rusak(b), 2);
+  assert.equal(await stok(b), 20);
+});
+
+test('Buang stok rusak oleh staf: ditolak kecuali punya izin; nilai dicatat sebagai kerugian', async () => {
+  const p = await produk({ stok: [10], cost: 400 });
+  const v = p.warna[0];
+  await query('UPDATE variants SET stok_rusak = 5 WHERE id = ?', [v]);
+  await tanpaIzin(tx((q) => buangRusak(q, sesiStaf(), { variantId: v, qty: 1, alasan: 'sobek' })));
+  await ditolak(tx((q) => buangRusak(q, sesiStaf(['buang_rusak']), { variantId: v, qty: 1, alasan: '' })), /Alasan/);
+  await ditolak(tx((q) => buangRusak(q, sesiAdmin, { variantId: v, qty: 6, alasan: 'sobek' })), /tidak cukup/);
+  const r = await tx((q) => buangRusak(q, sesiStaf(['buang_rusak']), { variantId: v, qty: 2, alasan: 'sobek' }));
+  assert.equal(r.nilai, 800);
+  assert.equal(await rusak(v), 3);
+  assert.equal(await stok(v), 10);
+  const adj = await queryOne("SELECT * FROM stock_adjustments WHERE variant_id = ? AND jenis = 'buang'", [v]);
+  assert.equal(adj.nilai, 800);
+  assert.equal(adj.kolom, 'rusak');
+});
+
+test('Retur ke supplier: dikirim, ditolak, diuangkan, dan diganti lewat barang masuk Rp 0', async () => {
+  const p = await produk({ stok: [10, 10], cost: 500 });
+  const [a, b] = p.warna;
+  await query('UPDATE variants SET stok_rusak = 6 WHERE id IN (?)', [[a, b]]);
+  const sup = (await query("INSERT INTO suppliers (name) VALUES ('Supplier Uji')")).insertId;
+  const kirim = (items) => tx((q) => buatReturSupplier(q, sesiStaf(), { supplier_id: sup, items }));
+  const selesai = (id, status, uang) => tx((q) => selesaikanReturSupplier(q, sesiStaf(), id, { status, uang }));
+
+  const r1 = await kirim([{ variant_id: a, qty: 2 }]);
+  assert.equal(r1.nilai, 1000);
+  assert.equal(await rusak(a), 4);
+  await selesai(r1.id, 'ditolak');
+  assert.equal(await rusak(a), 6);
+  await ditolak(selesai(r1.id, 'diuangkan'), /sudah ditolak/);
+
+  const kulakan = await dompet('kulakan');
+  const r2 = await kirim([{ variant_id: a, qty: 1 }, { variant_id: b, qty: 1 }]);
+  await selesai(r2.id, 'diuangkan', 900);
+  assert.equal(await dompet('kulakan'), kulakan + 900);
+
+  const r3 = await kirim([{ variant_id: b, qty: 3 }]);
+  const g = await selesai(r3.id, 'diganti');
+  const pu = await queryOne('SELECT * FROM purchases WHERE id = ?', [g.purchaseId]);
+  assert.equal(pu.total, 0);
+  assert.equal(pu.retur_supplier_id, r3.id);
+  const item = await queryOne('SELECT * FROM purchase_items WHERE purchase_id = ?', [pu.id]);
+  await tx((q) => masukRak(q, pu.id, item.id, [{ variant_id: b, qty: 3 }], STAF));
+  assert.equal(await stok(b), 13);
+  assert.equal(await rusak(b), 2);
+  assert.equal(await stok(a), 10);
 });

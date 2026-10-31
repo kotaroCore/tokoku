@@ -209,7 +209,7 @@ function SaleDetail({ id, onChanged }) {
               const sisa = it.qty - it.returned_qty;
               return (
                 <tr key={it.id}>
-                  <td>{it.product_name}{it.color && ` — ${it.color}`}</td>
+                  <td>{it.product_name}{it.color && ` — ${it.color}`}{it.dari_rusak ? ' (rusak)' : ''}</td>
                   <td className="r">{rp(it.unit_price)}{it.discount_pct > 0 && ` (-${num(it.discount_pct)}%)`} / {it.unit_name}</td>
                   <td className="r">{num(it.qty)} {it.unit_name}</td>
                   <td className="r">{it.returned_qty > 0 ? num(it.returned_qty) : ''}</td>

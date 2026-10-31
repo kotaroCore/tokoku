@@ -16,6 +16,8 @@ export default function POS() {
   const [qty, setQty] = useState('1');
   const [disc, setDisc] = useState('0');
   const [discTouched, setDiscTouched] = useState(false);
+  const [rusakMode, setRusakMode] = useState(false); // jual dari stok rusak, harga diketik kasir
+  const [hargaRusak, setHargaRusak] = useState('');
   const [cart, setCart] = useState([]);
 
   const [channel, setChannel] = useState('retail');
@@ -71,6 +73,8 @@ export default function POS() {
     setQty('1');
     setDisc('0');
     setDiscTouched(false);
+    setRusakMode(false);
+    setHargaRusak('');
     setQ('');
   }
 
@@ -78,7 +82,27 @@ export default function POS() {
     setErr('');
     const n = Number(String(qty).replace(',', '.'));
     if (!sel || !unit || !(n > 0)) return setErr('Pilih produk, satuan, dan jumlah yang benar.');
-    const used = (id) => cart.filter((c) => c.variant.id === id).reduce((x, c) => x + c.qty * c.unit.factor, 0);
+    const used = (id, rusak = false) => cart.filter((c) => c.variant.id === id && !!c.rusak === rusak).reduce((x, c) => x + c.qty * c.unit.factor, 0);
+    if (rusakMode) {
+      // Barang rusak: warna diambil dari stok rusak terbanyak; nota tetap tanpa warna, baris ditandai (rusak).
+      const harga = Math.round(Number(hargaRusak));
+      if (hargaRusak === '' || !(harga >= 0)) return setErr('Isi harga barang rusak per satuan (sesuai kesepakatan).');
+      let need = n * unit.factor;
+      const sisaRusak = (v) => v.stok_rusak - used(v.id, true);
+      const total = sel.product.variants.reduce((x, v) => x + Math.max(0, sisaRusak(v)), 0);
+      if (need > total + 1e-9) return setErr(`Stok rusak tidak cukup. Sisa ${num(total)} ${sel.product.base_unit}.`);
+      const lines = [];
+      for (const v of [...sel.product.variants].sort((a, b) => sisaRusak(b) - sisaRusak(a))) {
+        if (need <= 1e-9) break;
+        const take = Math.min(need, Math.max(0, sisaRusak(v)));
+        if (take <= 0) continue;
+        lines.push({ product: sel.product, variant: v, unit, qty: take / unit.factor, disc: 0, auto: false, rusak: true, harga });
+        need -= take;
+      }
+      setCart([...cart, ...lines]);
+      setSel(null);
+      return;
+    }
     const free = (v) => v.stock - used(v.id);
     const active = sel.product.variants.filter((v) => v.active);
     const d = Math.min(100, Math.max(0, Number(disc) || 0));
@@ -129,11 +153,11 @@ export default function POS() {
     const out = [];
     const groups = new Map();
     cart.forEach((c, i) => {
-      const key = `${c.product.id}:${c.unit.id}:${c.disc}`;
+      const key = groupKey(c);
       groups.set(key, [...(groups.get(key) || []), i]);
     });
     for (const idx of groups.values()) {
-      const part = (i) => cart[i].qty * cart[i].unit.price * (1 - cart[i].disc / 100);
+      const part = (i) => cart[i].qty * priceOf(cart[i]) * (1 - cart[i].disc / 100);
       let rest = Math.round(idx.reduce((s, i) => s + part(i), 0));
       idx.forEach((i, k) => {
         out[i] = k === idx.length - 1 ? rest : Math.round(part(i));
@@ -148,7 +172,7 @@ export default function POS() {
   const cartRows = (() => {
     const groups = new Map();
     cart.forEach((c, i) => {
-      const key = `${c.product.id}:${c.unit.id}:${c.disc}`;
+      const key = groupKey(c);
       if (!groups.has(key)) groups.set(key, { c, idx: [], qty: 0, sub: 0 });
       const g = groups.get(key);
       g.idx.push(i); g.qty += c.qty; g.sub += subtotals[i];
@@ -202,7 +226,7 @@ export default function POS() {
     const r = await post('/api/sales', {
       channel,
       draft,
-      items: cart.map((c) => ({ variant_id: c.variant.id, unit_id: c.unit.id, qty: c.qty, auto: c.auto, discount_pct: c.disc })),
+      items: cart.map((c) => ({ variant_id: c.variant.id, unit_id: c.unit.id, qty: c.qty, auto: c.auto, discount_pct: c.disc, dari_rusak: c.rusak ? 1 : 0, harga: c.rusak ? c.harga : undefined })),
       customer_name: custName,
       customer_phone: custPhone,
       customer_address: custAddr,
@@ -267,14 +291,22 @@ export default function POS() {
                     </select>
                   </div>
                   <div><label>Jumlah</label><input inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
-                  <div><label>Diskon %</label><input inputMode="decimal" value={disc} onChange={(e) => { setDisc(e.target.value); setDiscTouched(true); }} /></div>
+                  {rusakMode
+                    ? <div><label>Harga rusak / {unit?.name || 'satuan'}</label><input inputMode="numeric" value={hargaRusak} onChange={(e) => setHargaRusak(e.target.value)} placeholder={unit ? String(unit.price) : ''} /></div>
+                    : <div><label>Diskon %</label><input inputMode="decimal" value={disc} onChange={(e) => { setDisc(e.target.value); setDiscTouched(true); }} /></div>}
                 </div>
-                <div className="field">
+                {sel.product.variants.some((v) => v.stok_rusak > 0) && (
+                  <label style={{ display: 'block', margin: '6px 0' }}>
+                    <input type="checkbox" style={{ width: 'auto' }} checked={rusakMode} onChange={(e) => setRusakMode(e.target.checked)} /> Jual barang rusak
+                    <span className="muted"> (stok rusak {num(sel.product.variants.reduce((x, v) => x + v.stok_rusak, 0))} {sel.product.base_unit}; harga bebas sesuai kesepakatan)</span>
+                  </label>
+                )}
+                {!rusakMode && <div className="field">
                   <label>Warna (opsional; kosongkan kalau tidak yakin, dicek sore)</label>
                   <input value={variantId} onChange={(e) => setVariantId(e.target.value)} placeholder="mis. hitam, atau hitam 2, putih 2 (angka = satuan dasar). Sisanya otomatis & dicek sore" />
-                </div>
+                </div>}
                 <p className="muted">
-                  Subtotal: {unit ? rp((Number(String(qty).replace(',', '.')) || 0) * unit.price * (1 - (Number(disc) || 0) / 100)) : '-'}
+                  Subtotal: {unit ? rp((Number(String(qty).replace(',', '.')) || 0) * (rusakMode ? Number(hargaRusak) || 0 : unit.price * (1 - (Number(disc) || 0) / 100))) : '-'}
                 </p>
                 <button onClick={addToCart}>Tambah ke keranjang</button>{' '}
                 <button className="secondary" onClick={() => setSel(null)}>Batal</button>
@@ -291,9 +323,9 @@ export default function POS() {
                 <tbody>
                   {cartRows.map((g) => (
                     <tr key={g.idx[0]}>
-                      <td>{g.c.product.name}{g.c.disc > 0 && <span className="muted"> diskon {g.c.disc}%</span>}</td>
+                      <td>{g.c.product.name}{g.c.rusak && <span className="badge red"> rusak</span>}{g.c.disc > 0 && <span className="muted"> diskon {g.c.disc}%</span>}</td>
                       <td className="r">{num(g.qty)} {g.c.unit.name}</td>
-                      <td className="r">{rp(g.c.unit.price)}</td>
+                      <td className="r">{rp(priceOf(g.c))}</td>
                       <td className="r">{rp(g.sub)}</td>
                       <td><button className="secondary" onClick={() => setCart(cart.filter((_, j) => !g.idx.includes(j)))}>×</button></td>
                     </tr>
@@ -394,11 +426,16 @@ export default function POS() {
   );
 }
 
+// Harga satuan baris keranjang: harga barang rusak diketik kasir, selain itu harga satuan produk.
+const priceOf = (c) => (c.rusak ? c.harga : c.unit.price);
+// Satu produk/satuan/diskon (dan harga rusak) yang terpecah ke beberapa warna dihitung sebagai satu kelompok.
+const groupKey = (c) => `${c.product.id}:${c.unit.id}:${c.disc}:${c.rusak ? 'r' + c.harga : ''}`;
+
 // Nota hanya per produk: baris yang terpecah per warna digabung (produk, satuan, harga, diskon sama).
 function mergeItems(items) {
   const out = new Map();
   for (const i of items) {
-    const key = `${i.product_name}|${i.unit_name}|${i.unit_price}|${i.discount_pct}`;
+    const key = `${i.product_name}|${i.unit_name}|${i.unit_price}|${i.discount_pct}|${i.dari_rusak}`;
     const g = out.get(key);
     if (g) { g.qty += i.qty; g.subtotal += i.subtotal; } else out.set(key, { ...i });
   }
@@ -417,7 +454,7 @@ function Nota({ nota, onClose }) {
         <hr style={{ borderStyle: 'dashed' }} />
         {mergeItems(nota.items).map((i) => (
           <div key={i.id} style={{ marginBottom: 6 }}>
-            <div>{i.product_name} ({i.unit_name})</div>
+            <div>{i.product_name} ({i.unit_name}){i.dari_rusak ? ' (rusak)' : ''}</div>
             <div style={line}>
               <span>{num(i.qty)} X {num(i.unit_price)}{i.discount_pct > 0 && ` (-${i.discount_pct}%)`}</span>
               <span>{rp(i.subtotal)}</span>
