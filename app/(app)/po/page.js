@@ -6,6 +6,8 @@ import Modal from '../Modal';
 
 const STATUS = { draft: 'Draf', dikirim: 'Dikirim ke supplier', diterima_sebagian: 'Diterima sebagian', diterima: 'Diterima', batal: 'Batal' };
 const LEVEL = { yellow: 'Waspada', red: 'Kritis' };
+// PO sudah per warna, jadi kata "sewarna" di nama satuan tidak perlu ditampilkan (nama tersimpan tetap utuh).
+const satuanTampil = (n) => String(n || '').replace(/\s*sewarna\b/gi, '').trim();
 
 // Pesanan ke supplier sebelum barang datang. PO tidak mengubah stok: barang yang datang dicatat di
 // Pembelian / barang masuk dengan memilih PO-nya, lalu dimasukkan ke rak seperti biasa.
@@ -44,8 +46,8 @@ export default function PO() {
             <span className="muted"> • {po.oleh}{po.catatan && ` • ${po.catatan}`}</span>
             {po.items.map((i) => (
               <div key={i.id} className="muted" style={{ paddingLeft: 14 }}>
-                {i.product_name}{i.color != null && ` — ${i.color || '-'}`}: {num(i.qty)} {i.unit_name}{i.harga_perkiraan != null && ` × ${rp(i.harga_perkiraan)}`}
-                {po.status !== 'draft' && ` • diterima ${num(i.diterima / i.factor)} dari ${num(i.qty)} ${i.unit_name}`}
+                {i.product_name}{i.color != null && ` — ${i.color || '-'}`}: {num(i.qty)} {satuanTampil(i.unit_name)}{i.harga_perkiraan != null && ` × ${rp(i.harga_perkiraan)}`}
+                {po.status !== 'draft' && ` • diterima ${num(i.diterima / i.factor)} dari ${num(i.qty)} ${satuanTampil(i.unit_name)}`}
               </div>
             ))}
             <div style={{ marginTop: 4 }}>
@@ -164,7 +166,7 @@ function PoBaru({ onClose, onSaved }) {
                   {opsi(p).map((o) => <option key={o.name} value={o.name}>{o.name}{o.factor !== 1 ? ` (${num(o.factor)} ${p.base_unit})` : ''}</option>)}
                 </select>
               </div>
-              <div><label>Perkiraan harga / {u.name}</label>
+              <div><label>Perkiraan harga / {satuanTampil(u.name)}</label>
                 <input inputMode="numeric" style={{ width: 120 }} value={hargaOf(p)} placeholder="boleh kosong" onChange={(e) => setHarga({ ...harga, [p.product_id]: e.target.value })} />
               </div>
             </div>
@@ -177,7 +179,7 @@ function PoBaru({ onClose, onSaved }) {
               )) : 'Belum pernah dibeli dari supplier'}
             </div>
             <table>
-              <thead><tr><th></th><th>Warna</th><th className="r">Stok</th><th>Status</th><th>Jumlah ({u.name})</th></tr></thead>
+              <thead><tr><th></th><th>Warna</th><th className="r">Stok</th><th>Status</th><th>Jumlah ({satuanTampil(u.name)})</th></tr></thead>
               <tbody>
                 {p.variants.map((v) => {
                   const on = pilih[v.id] != null;
@@ -205,8 +207,8 @@ function PoBaru({ onClose, onSaved }) {
               const besar = opsi(p).filter((o) => o.factor > u.factor);
               return (
                 <p style={{ margin: '6px 0 0' }}>
-                  Total <strong>{num(jml)} {u.name}</strong>{u.factor !== 1 && ` = ${num(dasar)} ${p.base_unit}`}
-                  {besar.map((o) => ` = ${num(dasar / o.factor)} ${o.name}`).join('')}
+                  Total <strong>{num(jml)} {satuanTampil(u.name)}</strong>{u.factor !== 1 && ` = ${num(dasar)} ${p.base_unit}`}
+                  {besar.map((o) => ` = ${num(dasar / o.factor)} ${satuanTampil(o.name)}`).join('')}
                 </p>
               );
             })()}
