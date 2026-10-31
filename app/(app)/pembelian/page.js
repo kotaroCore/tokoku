@@ -365,7 +365,7 @@ function Shelve({ purchase, item, product, presets, onDone }) {
 
   async function save() {
     setErr('');
-    const lines = Object.entries(vals).filter(([, x]) => Number(x.qty) > 0).map(([id, x]) => ({ variant_id: Number(id), qty: Number(x.qty), factor: unitOf(id).factor }));
+    const lines = Object.entries(vals).filter(([, x]) => Number(x.qty) > 0).map(([id, x]) => ({ variant_id: Number(id), qty: Number(x.qty), factor: unitOf(id).factor, tempat: Number(x.tempat) || null }));
     if (!lines.length) return setErr('Isi jumlah minimal satu warna');
     setBusy(true);
     const r = await fetch(`/api/purchases/${purchase.id}/shelve`, {
@@ -387,7 +387,7 @@ function Shelve({ purchase, item, product, presets, onDone }) {
         <div style={{ marginTop: 6 }}>
           {dariPO.length > 0 && <button type="button" className="secondary" onClick={isiDariPO}>Isi warna dari PO #{purchase.po_id}</button>}
           <table>
-            <thead><tr><th>Warna</th><th>Stok kini</th><th>Masuk</th></tr></thead>
+            <thead><tr><th>Warna</th><th>Stok kini</th><th>Masuk</th><th>Ke tempat</th></tr></thead>
             <tbody>
               {product.variants.filter((v) => v.active).map((v) => (
                 <tr key={v.id}>
@@ -399,6 +399,13 @@ function Shelve({ purchase, item, product, presets, onDone }) {
                       {opts.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
                     </select>
                     {Number(vals[v.id]?.qty) > 0 && <span className="muted"> = {num(Number(vals[v.id].qty) * unitOf(v.id).factor)} {product.base_unit}</span>}
+                  </td>
+                  <td>
+                    {v.tempat?.length > 1 ? (
+                      <select value={vals[v.id]?.tempat || 1} onChange={(e) => setVals({ ...vals, [v.id]: { ...vals[v.id], tempat: e.target.value } })}>
+                        {v.tempat.map((t) => <option key={t.urutan} value={t.urutan}>{t.lokasi} ({num(t.qty)})</option>)}
+                      </select>
+                    ) : <span className="muted">{v.tempat?.[0]?.lokasi || '-'}</span>}
                   </td>
                 </tr>
               ))}

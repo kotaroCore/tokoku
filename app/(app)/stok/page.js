@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { num } from '@/lib/format';
 import { boleh } from '@/lib/izin';
 import { useMe } from '../me';
+import { DaftarTempat, TempatEditor } from './Tempat';
 
 const LABEL = { ok: 'Aman', green: 'Mulai menipis', yellow: 'Waspada', red: 'Kritis', none: 'Tanpa level' };
 
@@ -12,6 +13,7 @@ export default function Stok() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
   const [msg, setMsg] = useState('');
+  const [tempatV, setTempatV] = useState(null); // warna yang tempat penyimpanannya sedang diatur
   const bolehBuang = boleh(useMe(), 'buang_rusak');
 
   const load = () => fetch('/api/stock').then((r) => r.json()).then(setRows);
@@ -44,16 +46,6 @@ export default function Stok() {
     load();
   }
 
-  // Lokasi utama warna (ruangan / lemari / rak). Hanya untuk mencari barang.
-  async function lokasi(v) {
-    const daftar = await fetch('/api/lokasi').then((r) => r.json());
-    const input = prompt(`Lokasi utama ${v.product_name} ${v.color || ''}.${daftar.length ? ` Contoh dari daftar: ${daftar.slice(0, 5).map((l) => l.label).join('; ')}` : ''}
-Kosongkan untuk menghapus.`, v.lokasi_rak || '');
-    if (input == null) return;
-    const r = await fetch('/api/lokasi', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ variant_id: v.id, lokasi_rak: input }) });
-    setMsg(r.ok ? 'Lokasi disimpan.' : (await r.json()).error);
-    load();
-  }
 
   async function levels(v) {
     const input = prompt(`Level reorder ${v.product_name} ${v.color} (${v.base_unit}).\nFormat: hijau,kuning,merah  Contoh: 144,108,72`, `${v.level_green},${v.level_yellow},${v.level_red}`);
@@ -70,12 +62,13 @@ Kosongkan untuk menghapus.`, v.lokasi_rak || '');
   const shown = rows.filter(
     (v) =>
       (filter === 'all' || (filter === 'rusak' ? v.stok_rusak > 0 : filter === 'alert' ? ['green', 'yellow', 'red'].includes(v.status) : v.status === filter)) &&
-      `${v.product_name} ${v.color} ${v.category} ${v.lokasi_rak || ''}`.toLowerCase().includes(q.toLowerCase())
+      `${v.product_name} ${v.color} ${v.category} ${v.tempat.map((t) => t.lokasi).join(' ')}`.toLowerCase().includes(q.toLowerCase())
   );
 
   return (
     <>
       <h1>Stok</h1>
+      {tempatV && <TempatEditor v={tempatV} onClose={() => setTempatV(null)} onSaved={() => { setTempatV(null); setMsg('Tempat penyimpanan disimpan.'); load(); }} />}
       <p><Link href="/stok/awal">Input stok awal</Link> · <Link href="/stok/opname">Opname per warna</Link> · <Link href="/stok/lokasi">Lokasi rak</Link></p>
       <div className="card">
         <div className="row">
@@ -94,21 +87,21 @@ Kosongkan untuk menghapus.`, v.lokasi_rak || '');
         <p className="muted">Stok rusak bisa dijual dari kasir (pilih "jual barang rusak"), dibuang{bolehBuang ? '' : ' (admin atau staf berizin)'}, atau dikembalikan ke supplier di halaman <Link href="/supplier">Supplier</Link>.</p>
         {msg && <div className="alert ok">{msg}</div>}
         <table>
-          <thead><tr><th>Kategori</th><th>Produk</th><th>Warna</th><th>Lokasi</th><th className="r">Stok</th><th>Level (H/K/M)</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Kategori</th><th>Produk</th><th>Warna</th><th>Tempat (stok)</th><th className="r">Stok</th><th>Level (H/K/M)</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {shown.map((v) => (
               <tr key={v.id}>
                 <td>{v.category}</td>
                 <td>{v.product_name}</td>
                 <td>{v.color || '-'}</td>
-                <td className="muted">{v.lokasi_rak || '-'}</td>
+                <td className="muted"><DaftarTempat tempat={v.tempat} /></td>
                 <td className="r">{num(v.stock)} {v.base_unit}{v.stok_rusak > 0 && <div className="muted">rusak {num(v.stok_rusak)}</div>}</td>
                 <td>{v.level_green}/{v.level_yellow}/{v.level_red}</td>
                 <td><span className={`badge ${v.status}`}>{LABEL[v.status]}</span></td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button className="secondary" onClick={() => adjust(v)}>Ubah stok</button>{' '}
                   <button className="secondary" onClick={() => levels(v)}>Level</button>{' '}
-                  <button className="secondary" onClick={() => lokasi(v)}>Lokasi</button>
+                  <button className="secondary" onClick={() => setTempatV(v)}>Tempat</button>
                   {v.stok_rusak > 0 && bolehBuang && <>{' '}<button className="secondary" onClick={() => buang(v)}>Buang</button></>}
                 </td>
               </tr>

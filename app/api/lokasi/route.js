@@ -1,7 +1,6 @@
 import { query, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
-import { BadRequest } from '@/lib/sales';
-import { catatBeda } from '@/lib/catatan';
+import { aturLokasi } from '@/lib/lokasi';
 import { galat } from '@/lib/galat';
 
 const label = (l) => [l.ruangan, l.lemari, l.rak].filter(Boolean).join(' / ');
@@ -29,20 +28,15 @@ export async function POST(req) {
   return Response.json({ ok: true, id: r.insertId });
 }
 
-// Aktif / nonaktifkan lokasi ({ id, aktif }), atau atur lokasi utama warna ({ variant_id, lokasi_rak }).
+// Aktif / nonaktifkan lokasi ({ id, aktif }), atau atur tempat penyimpanan warna
+// ({ variant_id, tempat: [{ lokasi, qty }] }, maks. 3; stok tempat 1 = stok warna dikurangi tempat lain).
 export async function PATCH(req) {
   const { session, error } = await requireApi();
   if (error) return error;
   const b = await req.json();
   try {
     if (b.variant_id) {
-      await tx(async (q) => {
-        const [v] = await q('SELECT * FROM variants WHERE id = ? FOR UPDATE', [b.variant_id]);
-        if (!v) throw new BadRequest('Warna tidak ditemukan');
-        const lokasi_rak = String(b.lokasi_rak || '').trim().slice(0, 50) || null;
-        await q('UPDATE variants SET lokasi_rak = ? WHERE id = ?', [lokasi_rak, v.id]);
-        await catatBeda(q, { userId: session.uid, objek: 'warna', objekId: v.id, lama: v, baru: { lokasi_rak } });
-      });
+      await tx((q) => aturLokasi(q, { variantId: Number(b.variant_id), userId: session.uid, tempat: b.tempat }));
     } else {
       await query('UPDATE lokasi SET aktif = ? WHERE id = ?', [b.aktif ? 1 : 0, b.id]);
     }

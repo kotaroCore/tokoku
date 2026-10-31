@@ -2,8 +2,9 @@ import { query, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { simpanOpname } from '@/lib/stok';
 import { galat } from '@/lib/galat';
+import { tempatWarna } from '@/lib/lokasi';
 
-// ?variant_id=X: stok sistem, lokasi utama, dan lokasi dari opname terakhir warna itu (untuk mengisi baris).
+// ?variant_id=X: stok sistem dan tempat penyimpanan warna itu (maks. 3) beserta stoknya, untuk mengisi baris.
 // Tanpa parameter: 100 opname terakhir.
 export async function GET(req) {
   const { error } = await requireApi();
@@ -15,11 +16,7 @@ export async function GET(req) {
       [vid]
     );
     if (!v) return Response.json({ error: 'Warna tidak ditemukan' }, { status: 404 });
-    const lokasi = await query(
-      "SELECT DISTINCT i.lokasi FROM opname_item i WHERE i.opname_id = (SELECT MAX(id) FROM opname WHERE variant_id = ?) AND i.lokasi <> ''",
-      [vid]
-    );
-    return Response.json({ ...v, lokasi_terakhir: lokasi.map((l) => l.lokasi) });
+    return Response.json({ ...v, tempat: (await tempatWarna(query, [vid]))[vid] || [] });
   }
   const rows = await query(
     `SELECT o.*, v.color, p.name AS product_name, p.base_unit, u.name AS oleh FROM opname o

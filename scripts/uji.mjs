@@ -24,6 +24,7 @@ const { prosesRetur } = await import('../lib/returns.js');
 const { catatPembelian, ubahStatusPembelian, masukRak } = await import('../lib/purchases.js');
 const { koreksiStok, cekSoreAlokasi, isiStokAwal, simpanOpname } = await import('../lib/stok.js');
 const { buatPO, ubahStatusPO } = await import('../lib/po.js');
+const { aturLokasi } = await import('../lib/lokasi.js');
 const { ubahProduk } = await import('../lib/produk.js');
 const { buangRusak, buatReturSupplier, selesaikanReturSupplier } = await import('../lib/rusak.js');
 const { NamaMirip, namaMirip, teksPengingat } = await import('../lib/pembeli.js');
@@ -528,4 +529,37 @@ test('Opname per warna: jumlah fisik dari beberapa lokasi, selisih tercatat seba
   // Tanpa selisih: tercatat, tanpa koreksi dan tanpa alasan.
   await tx((q) => simpanOpname(q, { variantId: v, userId: STAF, items: [{ lokasi: 'Toko', qty: 97 }] }));
   assert.equal((await query("SELECT * FROM stock_adjustments WHERE variant_id = ? AND jenis = 'opname'", [v])).length, 1);
+});
+
+test('Stok per tempat (maks. 3): total sama dengan stok warna, terjual dari tempat 1 dulu lalu 2 dan 3', async () => {
+  const p = await produk({ stok: [30] });
+  const v = p.warna[0];
+  const tempat = async () => (await query('SELECT lokasi, qty FROM variant_lokasi WHERE variant_id = ? ORDER BY urutan', [v])).map((t) => [t.lokasi, t.qty]);
+  const atur = (t) => tx((q) => aturLokasi(q, { variantId: v, userId: STAF, tempat: t }));
+  await ditolak(atur([{ lokasi: 'A' }, { lokasi: 'B' }, { lokasi: 'C' }, { lokasi: 'D' }]), /Maksimal 3/);
+  await ditolak(atur([{ lokasi: 'Toko' }, { lokasi: 'Gudang', qty: 31 }]), /melebihi/);
+  await ditolak(atur([{ lokasi: 'Toko' }, { lokasi: 'toko', qty: 1 }]), /kembar/);
+  await atur([{ lokasi: 'Toko depan' }, { lokasi: 'Gudang', qty: 12 }, { lokasi: 'Lemari B', qty: 8 }]);
+  assert.deepEqual(await tempat(), [['Toko depan', 10], ['Gudang', 12], ['Lemari B', 8]]);
+  assert.equal((await queryOne('SELECT lokasi_rak FROM variants WHERE id = ?', [v])).lokasi_rak, 'Toko depan');
+
+  // Terjual 14: tempat 1 habis (10), sisanya 4 dari tempat 2.
+  const n = await notaLunas({ items: [{ variant_id: v, unit_id: p.biji, qty: 14 }], paidCash: 14000 });
+  assert.deepEqual(await tempat(), [['Toko depan', 0], ['Gudang', 8], ['Lemari B', 8]]);
+  // Retur masuk ke tempat 1.
+  const it = await queryOne('SELECT id FROM sale_items WHERE sale_id = ?', [n.saleId]);
+  await tx((q) => prosesRetur(q, { userId: STAF }, { sale_id: n.saleId, items: [{ sale_item_id: it.id, qty: 2 }] }));
+  assert.deepEqual(await tempat(), [['Toko depan', 2], ['Gudang', 8], ['Lemari B', 8]]);
+  // Masuk rak ke tempat 3.
+  const beli = await tx((q) => catatPembelian(q, { userId: STAF, isAdmin: false, bolehModal: false }, { items: [{ product_id: p.pid, unit_name: 'dosin', factor: 12, qty: 1, unit_cost: 6000 }] }));
+  const pi = await queryOne('SELECT id FROM purchase_items WHERE purchase_id = ?', [beli.id]);
+  await tx((q) => masukRak(q, beli.id, pi.id, [{ variant_id: v, qty: 1, tempat: 3 }], STAF));
+  assert.deepEqual(await tempat(), [['Toko depan', 2], ['Gudang', 8], ['Lemari B', 20]]);
+  // Koreksi minus diambil dari tempat 1 dulu.
+  await tx((q) => koreksiStok(q, { variantId: v, userId: STAF, delta: -5, note: 'hilang' }));
+  assert.deepEqual(await tempat(), [['Toko depan', 0], ['Gudang', 5], ['Lemari B', 20]]);
+  // Opname per tempat menjadi stok tiap tempat.
+  await tx((q) => simpanOpname(q, { variantId: v, userId: STAF, items: [{ lokasi: 'Toko depan', qty: 4 }, { lokasi: 'Gudang', qty: 5 }, { lokasi: 'Lemari B', qty: 19 }], alasan: 'hitung ulang' }));
+  assert.deepEqual(await tempat(), [['Toko depan', 4], ['Gudang', 5], ['Lemari B', 19]]);
+  assert.equal(await stok(v), 28);
 });

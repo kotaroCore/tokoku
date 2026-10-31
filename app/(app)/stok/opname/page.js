@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { num } from '@/lib/format';
+import { MAKS_TEMPAT } from '../Tempat';
 
 const kosong = () => ({ lokasi: '', qty: '' });
 
@@ -29,16 +30,15 @@ export default function Opname() {
   const matches = useMemo(() => {
     const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return [];
-    return stock.filter((x) => words.every((w) => `${x.product_name} ${x.color} ${x.lokasi_rak || ''}`.toLowerCase().includes(w))).slice(0, 15);
+    return stock.filter((x) => words.every((w) => `${x.product_name} ${x.color} ${x.tempat.map((t) => t.lokasi).join(' ')}`.toLowerCase().includes(w))).slice(0, 15);
   }, [q, stock]);
 
   async function pilih(id) {
     setErr(''); setMsg(''); setAlasan(''); setQ('');
     const d = await fetch(`/api/opname?variant_id=${id}`).then((r) => r.json());
     setV(d);
-    // Tempat yang diketahui: lokasi utama dan lokasi di opname terakhir warna ini.
-    const tempat = [...new Set([d.lokasi_rak, ...d.lokasi_terakhir].filter(Boolean))];
-    setBaris(tempat.length ? tempat.map((l) => ({ lokasi: l, qty: '' })) : [kosong()]);
+    // Baris = tempat penyimpanan warna ini (maks. 3). Hasil hitungan menjadi stok tiap tempat.
+    setBaris(d.tempat.length ? d.tempat.map((t) => ({ lokasi: t.lokasi, qty: '' })) : [kosong()]);
   }
 
   const angka = (s) => Number(String(s).replace(',', '.'));
@@ -50,6 +50,7 @@ export default function Opname() {
     setErr('');
     if (!terisi.length) return setErr('Isi jumlah fisik minimal satu tempat (0 bila kosong).');
     if (terisi.some((b) => !(angka(b.qty) >= 0))) return setErr('Jumlah fisik tidak valid.');
+    if (terisi.length > 1 && terisi.some((b) => !b.lokasi.trim())) return setErr('Isi nama tempat di setiap baris.');
     if (selisih && !alasan.trim()) return setErr('Ada selisih: isi alasannya.');
     const r = await fetch('/api/opname', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -66,7 +67,7 @@ export default function Opname() {
   return (
     <>
       <h1>Stok opname per warna</h1>
-      <p className="muted">Pilih satu warna, lalu ketik jumlah fisik di semua tempat warna itu disimpan. Stok tetap satu angka per warna; lokasi hanya untuk mencari barang. <Link href="/stok">← Stok</Link> · <Link href="/stok/lokasi">Daftar lokasi</Link></p>
+      <p className="muted">Pilih satu warna, lalu ketik jumlah fisik di setiap tempat warna itu disimpan (maks. {MAKS_TEMPAT} tempat, nama diketik bebas). Totalnya menjadi stok warna, dan hasil tiap tempat menjadi stok tempat itu. <Link href="/stok">← Stok</Link> · <Link href="/stok/lokasi">Daftar lokasi</Link></p>
       {msg && <div className="alert ok">{msg}</div>}
 
       <div className="card">
@@ -77,7 +78,7 @@ export default function Opname() {
             <div className="suggest">
               {matches.map((x) => (
                 <div key={x.id} onClick={() => pilih(x.id)}>
-                  {x.product_name} — {x.color || '-'} <span className="muted">({num(x.stock)} {x.base_unit}{x.lokasi_rak ? ` • ${x.lokasi_rak}` : ''})</span>
+                  {x.product_name} — {x.color || '-'} <span className="muted">({num(x.stock)} {x.base_unit}{x.tempat.length ? ` • ${x.tempat.map((t) => t.lokasi).join(', ')}` : ''})</span>
                 </div>
               ))}
             </div>
@@ -87,7 +88,7 @@ export default function Opname() {
         {v && (
           <>
             <h2>{v.product_name} — {v.color || '-'}</h2>
-            <p>Stok sistem: <strong>{num(v.stock)} {v.base_unit}</strong>{v.lokasi_rak && <span className="muted"> • lokasi utama {v.lokasi_rak}</span>}</p>
+            <p>Stok sistem: <strong>{num(v.stock)} {v.base_unit}</strong>{v.tempat.length > 0 && <span className="muted"> • {v.tempat.map((t) => `${t.lokasi}: ${num(t.qty)}`).join(', ')}</span>}</p>
             <datalist id="lokasi-list">{lokasi.map((l) => <option key={l.id} value={l.label} />)}</datalist>
             <table>
               <thead><tr><th>Tempat / lokasi</th><th>Jumlah fisik ({v.base_unit})</th><th></th></tr></thead>
@@ -101,7 +102,7 @@ export default function Opname() {
                 ))}
               </tbody>
             </table>
-            <button type="button" className="secondary" style={{ marginTop: 6 }} onClick={() => setBaris([...baris, kosong()])}>+ Tempat lain</button>
+            {baris.length < MAKS_TEMPAT && <button type="button" className="secondary" style={{ marginTop: 6 }} onClick={() => setBaris([...baris, kosong()])}>+ Tempat lain</button>}
             <div className="alert" style={{ marginTop: 10 }}>
               Total fisik <strong>{num(fisik)}</strong> • sistem {num(v.stock)} • selisih{' '}
               <strong style={selisih ? { color: 'var(--red)' } : undefined}>{selisih > 0 ? '+' : ''}{num(selisih)} {v.base_unit}</strong>

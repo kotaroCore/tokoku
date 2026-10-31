@@ -2,6 +2,7 @@ import { query, tx } from '@/lib/db';
 import { requireApi } from '@/lib/auth';
 import { tambahProduk, ubahProduk, aktifProduk } from '@/lib/produk';
 import { galat } from '@/lib/galat';
+import { tempatWarna } from '@/lib/lokasi';
 
 export async function GET(req) {
   const { error } = await requireApi();
@@ -16,6 +17,8 @@ export async function GET(req) {
   );
   const units = await query('SELECT * FROM units ORDER BY factor');
   const variants = await query('SELECT * FROM variants ORDER BY color');
+  const tempat = await tempatWarna(query, variants.map((v) => v.id));
+  for (const v of variants) v.tempat = tempat[v.id] || [];
   return Response.json(
     products.map((p) => ({
       ...p,

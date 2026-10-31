@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { num, rp } from '@/lib/format';
 import { boleh } from '@/lib/izin';
 import { useMe } from '../me';
+import { DaftarTempat } from '../stok/Tempat';
 
 const LABEL = { ok: 'Aman', green: 'Mulai menipis', yellow: 'Waspada', red: 'Kritis', none: '-' };
 const DOMPET_LABEL = { laci: 'Laci', receh: 'Receh', kulakan: 'Kulakan' };
@@ -101,7 +102,7 @@ export default function Cek() {
     load();
   }
 
-  const shown = stock.filter((v) => `${v.product_name} ${v.color} ${v.category} ${v.lokasi_rak || ''}`.toLowerCase().includes(q.toLowerCase()));
+  const shown = stock.filter((v) => `${v.product_name} ${v.color} ${v.category} ${v.tempat.map((t) => t.lokasi).join(' ')}`.toLowerCase().includes(q.toLowerCase()));
   // Langkah 5: warna laris (hitam, putih, natural) dan barang kuning atau merah.
   const perluDilihat = stock.filter((v) => v.status === 'yellow' || v.status === 'red' || /hitam|putih|natural/i.test(v.color || ''));
   const selisihEwallet = Number(harian.mutasiEwallet || 0) - (harian.sistem.ewallet || 0);
@@ -311,7 +312,7 @@ export default function Cek() {
           <tbody>
             {shown.map((v) => (
               <tr key={v.id}>
-                <td>{v.product_name}</td><td>{v.color || '-'}</td><td className="muted">{v.lokasi_rak || '-'}</td>
+                <td>{v.product_name}</td><td>{v.color || '-'}</td><td className="muted"><DaftarTempat tempat={v.tempat} /></td>
                 <td className="r">{num(v.stock)} {v.base_unit}{v.stok_rusak > 0 && <div className="muted">rusak {num(v.stok_rusak)}</div>}</td>
                 <td><span className={`badge ${v.status}`}>{LABEL[v.status]}</span></td>
               </tr>
